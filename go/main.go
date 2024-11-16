@@ -391,7 +391,11 @@ func postInitialize(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 	for _, cond := range conds {
-		cond.Level = conditionLevelInfo
+		cond.Level, err = calculateConditionLevel(cond.Condition)
+		if err != nil {
+			c.Logger().Errorf("failed to calculate condition level: %v", err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
 	}
 	_, err = db.NamedExec("INSERT INTO `isu_condition`"+
 		"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level`)"+
