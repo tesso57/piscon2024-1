@@ -1207,6 +1207,7 @@ func getTrend(c echo.Context) error {
 				ID:        isu.ID,
 				Timestamp: cond.Timestamp.Unix(),
 			}
+			log.Printf("conditionLevel: %+v", trendCondition)
 			switch conditionLevel {
 			case "info":
 				characterInfoIsuConditions = append(characterInfoIsuConditions, &trendCondition)
@@ -1233,12 +1234,6 @@ func getTrend(c echo.Context) error {
 			return characterCriticalIsuConditions[i].Timestamp > characterCriticalIsuConditions[j].Timestamp
 		})
 
-		log.Printf("character: %v, info: %v, warning: %v, critical: %v",
-			character.Character,
-			characterInfoIsuConditions,
-			characterWarningIsuConditions,
-			characterCriticalIsuConditions,
-		)
 		res = append(res,
 			TrendResponse{
 				Character: character.Character,
