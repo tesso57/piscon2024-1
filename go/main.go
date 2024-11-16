@@ -1116,43 +1116,58 @@ func getIsuConditionsFromDB(
 	isuName string,
 ) ([]*GetIsuConditionResponse, error) {
 	conditions := []IsuCondition{}
-	var err error
 
+	levels := maps.Keys(conditionLevel)
 	if startTime.IsZero() {
-		err = db.Select(&conditions,
+		q, args, err := sqlx.In(
 			"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ?"+
 				"	AND `timestamp` < ?"+
-				"	ORDER BY `timestamp` DESC",
-			jiaIsuUUID, endTime,
+				"	AND `level` IN (?) "+
+				"	ORDER BY `timestamp` DESC "+
+				"	LIMIT ?",
+			jiaIsuUUID, endTime, levels, limit,
 		)
+		if err != nil {
+			return nil, fmt.Errorf("db error: %v", err)
+		}
+		q = db.Rebind(q)
+		err = db.Select(&conditions, q, args...)
+		if err != nil {
+			return nil, fmt.Errorf("db error: %v", err)
+		}
 	} else {
-		err = db.Select(&conditions,
+		q, args, err := sqlx.In(
 			"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ?"+
 				"	AND `timestamp` < ?"+
 				"	AND ? <= `timestamp`"+
-				"	ORDER BY `timestamp` DESC",
-			jiaIsuUUID, endTime, startTime,
+				"	AND `level` IN (?) "+
+				"	ORDER BY `timestamp` DESC "+
+				"	LIMIT ?",
+			jiaIsuUUID, endTime, startTime, levels, limit,
 		)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("db error: %v", err)
+		if err != nil {
+			return nil, fmt.Errorf("db error: %v", err)
+		}
+		q = db.Rebind(q)
+		err = db.Select(&conditions, q, args...)
+		if err != nil {
+			return nil, fmt.Errorf("db error: %v", err)
+		}
 	}
 
 	conditionsResponse := []*GetIsuConditionResponse{}
 	for _, c := range conditions {
 		cLevel := c.Level
-		if _, ok := conditionLevel[cLevel]; ok {
-			data := GetIsuConditionResponse{
-				JIAIsuUUID:     c.JIAIsuUUID,
-				IsuName:        isuName,
-				Timestamp:      c.Timestamp.Unix(),
-				IsSitting:      c.IsSitting,
-				Condition:      c.Condition,
-				ConditionLevel: cLevel,
-				Message:        c.Message,
-			}
-			conditionsResponse = append(conditionsResponse, &data)
+		data := GetIsuConditionResponse{
+			JIAIsuUUID:     c.JIAIsuUUID,
+			IsuName:        isuName,
+			Timestamp:      c.Timestamp.Unix(),
+			IsSitting:      c.IsSitting,
+			Condition:      c.Condition,
+			ConditionLevel: cLevel,
+			Message:        c.Message,
 		}
+		conditionsResponse = append(conditionsResponse, &data)
 	}
 
 	if len(conditionsResponse) > limit {
