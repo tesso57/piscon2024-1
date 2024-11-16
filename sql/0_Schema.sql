@@ -23,6 +23,7 @@ CREATE TABLE `isu_condition` (
   `is_sitting` TINYINT(1) NOT NULL,
   `condition` VARCHAR(255) NOT NULL,
   `message` VARCHAR(255) NOT NULL,
+  `level` VARCHAR(255) NOT NULL,
   `created_at` DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6),
   PRIMARY KEY(`id`),
   INDEX idx_jia_isu_uuid_timestamp (`jia_isu_uuid`, `timestamp`)
