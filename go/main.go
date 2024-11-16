@@ -396,13 +396,15 @@ func postInitialize(c echo.Context) error {
 			c.Logger().Errorf("failed to calculate condition level: %v", err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
-	}
-	_, err = db.NamedExec("INSERT INTO `isu_condition`"+
-		"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level`)"+
-		"	VALUES (:jia_isu_uuid, :timestamp, :is_sitting, :condition, :message, :level)", conds)
-	if err != nil {
-		c.Logger().Errorf("db error : %v", err)
-		return c.NoContent(http.StatusInternalServerError)
+		_, err = db.Exec(
+			"UPDATE `isu_condition` SET `level` = ? WHERE `id` = ?",
+			cond.Level,
+			cond.ID,
+		)
+		if err != nil {
+			c.Logger().Errorf("db error : %v", err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
 	}
 
 	return c.JSON(http.StatusOK, InitializeResponse{
