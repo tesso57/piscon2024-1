@@ -1232,6 +1232,13 @@ func getTrend(c echo.Context) error {
 		sort.Slice(characterCriticalIsuConditions, func(i, j int) bool {
 			return characterCriticalIsuConditions[i].Timestamp > characterCriticalIsuConditions[j].Timestamp
 		})
+
+		log.Printf("character: %v, info: %v, warning: %v, critical: %v",
+			character.Character,
+			characterInfoIsuConditions,
+			characterWarningIsuConditions,
+			characterCriticalIsuConditions,
+		)
 		res = append(res,
 			TrendResponse{
 				Character: character.Character,
