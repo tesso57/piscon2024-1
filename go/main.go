@@ -300,7 +300,7 @@ func main() {
 		e.Logger.Fatalf("missing: POST_ISUCONDITION_TARGET_BASE_URL")
 		return
 	}
-	go insertIsuConditionScheduled(time.Millisecond * 500)
+	go insertIsuConditionScheduled(time.Millisecond * 200)
 	serverPort := fmt.Sprintf(":%v", getEnv("SERVER_APP_PORT", "3000"))
 	e.Logger.Fatal(e.Start(serverPort))
 }
@@ -1200,7 +1200,9 @@ func getTrend(c echo.Context) error {
 		uuids := maps.Keys(isuMap)
 		conds := make([]IsuCondition, 0, 1024)
 		q, arg, err := sqlx.In(
-			"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` IN (?) ORDER BY `jia_isu_uuid`, `timestamp` DESC",
+			"SELECT cond.* FROM `isu_condition` cond "+
+				"INNER JOIN ( SELECT  `jia_isu_uuid`, MAX(`timestamp`) AS `timestamp` FROM `isu_condition`  WHERE `jia_isu_uuid` IN (?) GROUP BY `jia_isu_uuid`) AS latest"+
+				"ON cond.`jia_isu_uuid` = latest.`jia_isu_uuid` AND cond.`timestamp` = latest.`timestamp`",
 			uuids,
 		)
 		if err != nil {
