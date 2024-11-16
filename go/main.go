@@ -27,6 +27,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/labstack/gommon/log"
+	"golang.org/x/exp/maps"
 )
 
 const (
@@ -1159,11 +1160,12 @@ func getTrend(c echo.Context) error {
 		characterWarningIsuConditions := []*TrendCondition{}
 		characterCriticalIsuConditions := []*TrendCondition{}
 
-		uuids := make([]string, 0, len(isuList))
+		isuMap := make(map[string]Isu)
 		for _, isu := range isuList {
-			uuids = append(uuids, isu.JIAIsuUUID)
+			isuMap[isu.JIAIsuUUID] = isu
 		}
 
+		uuids := maps.Keys(isuMap)
 		conds := make([]IsuCondition, 0, 1024)
 		q, arg, err := sqlx.In("SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` IN (?)", uuids)
 		if err != nil {
@@ -1196,15 +1198,8 @@ func getTrend(c echo.Context) error {
 				c.Logger().Error(err)
 				return c.NoContent(http.StatusInternalServerError)
 			}
-			reqIsu := Isu{}
-			for _, isu := range isuList {
-				if isu.JIAIsuUUID == cond.JIAIsuUUID {
-					reqIsu = isu
-					break
-				}
-			}
 			trendCondition := TrendCondition{
-				ID:        reqIsu.ID,
+				ID:        isuMap[cond.JIAIsuUUID].ID,
 				Timestamp: cond.Timestamp.Unix(),
 			}
 			switch conditionLevel {
@@ -1249,7 +1244,7 @@ func getTrend(c echo.Context) error {
 // ISUからのコンディションを受け取る
 func postIsuCondition(c echo.Context) error {
 	// TODO: 一定割合リクエストを落としてしのぐようにしたが、本来は全量さばけるようにすべき
-	dropProbability := 0.1
+	dropProbability := 0.3
 	if rand.Float64() <= dropProbability {
 		c.Logger().Warnf("drop post isu condition request")
 		return c.NoContent(http.StatusAccepted)
