@@ -1173,21 +1173,10 @@ func getTrend(c echo.Context) error {
 
 		q = db.Rebind(q)
 
-		rows, err := db.Queryx(q, arg...)
+		err = db.Select(&conds, q, arg...)
 		if err != nil {
 			c.Logger().Errorf("db error: %v", err)
 			return c.NoContent(http.StatusInternalServerError)
-		}
-		defer rows.Close()
-
-		for rows.Next() {
-			var cond IsuCondition
-			err = rows.StructScan(&cond)
-			if err != nil {
-				c.Logger().Errorf("db error: %v", err)
-				return c.NoContent(http.StatusInternalServerError)
-			}
-			conds = append(conds, cond)
 		}
 
 		recentCondsGroupByID := make(map[string]IsuCondition)
@@ -1245,6 +1234,7 @@ func getTrend(c echo.Context) error {
 			})
 	}
 
+	log.Printf("trend: %+v", res)
 	return c.JSON(http.StatusOK, res)
 }
 
