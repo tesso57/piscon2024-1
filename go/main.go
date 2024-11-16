@@ -4,10 +4,8 @@ import (
 	"bytes"
 	"crypto/ecdsa"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	stdlog "log"
 	"math/rand"
 	"net/http"
@@ -22,6 +20,7 @@ import (
 	"github.com/dgrijalva/jwt-go"
 	"github.com/felixge/fgprof"
 	"github.com/go-sql-driver/mysql"
+	"github.com/goccy/go-json"
 	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
 	"github.com/labstack/echo/v4"
@@ -193,7 +192,7 @@ func NewMySQLConnectionEnv() *MySQLConnectionEnv {
 
 func (mc *MySQLConnectionEnv) ConnectDB() (*sqlx.DB, error) {
 	dsn := fmt.Sprintf(
-		"%v:%v@tcp(%v:%v)/%v?parseTime=true&loc=Asia%%2FTokyo",
+		"%v:%v@tcp(%v:%v)/%v?parseTime=true&loc=Asia%%2FTokyo&interpolateParams=true",
 		mc.User,
 		mc.Password,
 		mc.Host,
@@ -206,7 +205,7 @@ func (mc *MySQLConnectionEnv) ConnectDB() (*sqlx.DB, error) {
 func init() {
 	sessionStore = sessions.NewCookieStore([]byte(getEnv("SESSION_KEY", "isucondition")))
 
-	key, err := ioutil.ReadFile(jiaJWTSigningKeyPath)
+	key, err := os.ReadFile(jiaJWTSigningKeyPath)
 	if err != nil {
 		log.Fatalf("failed to read file: %v", err)
 	}
@@ -575,7 +574,7 @@ func postIsu(c echo.Context) error {
 	var image []byte
 
 	if useDefaultImage {
-		image, err = ioutil.ReadFile(defaultIconFilePath)
+		image, err = os.ReadFile(defaultIconFilePath)
 		if err != nil {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
@@ -588,7 +587,7 @@ func postIsu(c echo.Context) error {
 		}
 		defer file.Close()
 
-		image, err = ioutil.ReadAll(file)
+		image, err = os.ReadAll(file)
 		if err != nil {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
@@ -638,7 +637,7 @@ func postIsu(c echo.Context) error {
 	}
 	defer res.Body.Close()
 
-	resBody, err := ioutil.ReadAll(res.Body)
+	resBody, err := os.ReadAll(res.Body)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
