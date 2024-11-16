@@ -301,7 +301,7 @@ func main() {
 		e.Logger.Fatalf("missing: POST_ISUCONDITION_TARGET_BASE_URL")
 		return
 	}
-	go insertIsuConditionScheduled(time.Millisecond * 50)
+	go insertIsuConditionScheduled(time.Millisecond * 500)
 	serverPort := fmt.Sprintf(":%v", getEnv("SERVER_APP_PORT", "3000"))
 	e.Logger.Fatal(e.Start(serverPort))
 }
