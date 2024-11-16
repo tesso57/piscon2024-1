@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	stdlog "log"
 	"math/rand"
 	"net/http"
@@ -587,7 +588,7 @@ func postIsu(c echo.Context) error {
 		}
 		defer file.Close()
 
-		image, err = os.ReadAll(file)
+		image, err = io.ReadAll(file)
 		if err != nil {
 			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
@@ -637,7 +638,7 @@ func postIsu(c echo.Context) error {
 	}
 	defer res.Body.Close()
 
-	resBody, err := os.ReadAll(res.Body)
+	resBody, err := io.ReadAll(res.Body)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
