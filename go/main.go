@@ -1199,7 +1199,10 @@ func getTrend(c echo.Context) error {
 
 		uuids := maps.Keys(isuMap)
 		conds := make([]IsuCondition, 0, 1024)
-		q, arg, err := sqlx.In("SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` IN (?)", uuids)
+		q, arg, err := sqlx.In(
+			"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` IN (?) ORDER BY `jia_isu_uuid`, `timestamp` DESC",
+			uuids,
+		)
 		if err != nil {
 			c.Logger().Errorf("db error: %v", err)
 			return c.NoContent(http.StatusInternalServerError)
@@ -1217,10 +1220,6 @@ func getTrend(c echo.Context) error {
 		for _, c := range conds {
 			if _, ok := recentCondsGroupByID[c.JIAIsuUUID]; !ok {
 				recentCondsGroupByID[c.JIAIsuUUID] = c
-			} else {
-				if recentCondsGroupByID[c.JIAIsuUUID].Timestamp.Before(c.Timestamp) {
-					recentCondsGroupByID[c.JIAIsuUUID] = c
-				}
 			}
 		}
 
@@ -1276,7 +1275,7 @@ func getTrend(c echo.Context) error {
 // ISUからのコンディションを受け取る
 func postIsuCondition(c echo.Context) error {
 	// TODO: 一定割合リクエストを落としてしのぐようにしたが、本来は全量さばけるようにすべき
-	dropProbability := 0.9
+	dropProbability := 0
 	if rand.Float64() <= dropProbability {
 		c.Logger().Warnf("drop post isu condition request")
 		return c.NoContent(http.StatusAccepted)
