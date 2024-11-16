@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -174,6 +175,27 @@ type JIAServiceRequest struct {
 	IsuUUID       string `json:"isu_uuid"`
 }
 
+type InsertQueue struct {
+	Queue []IsuCondition
+	Lock  sync.Mutex
+}
+
+var insertQueue *InsertQueue
+
+func (iq *InsertQueue) Insert(condition IsuCondition) {
+	iq.Lock.Lock()
+	defer iq.Lock.Unlock()
+	iq.Queue = append(iq.Queue, condition)
+}
+
+func (iq *InsertQueue) PopAll() []IsuCondition {
+	iq.Lock.Lock()
+	defer iq.Lock.Unlock()
+	queue := iq.Queue
+	iq.Queue = []IsuCondition{}
+	return queue
+}
+
 func getEnv(key string, defaultValue string) string {
 	val := os.Getenv(key)
 	if val != "" {
@@ -215,6 +237,8 @@ func init() {
 	if err != nil {
 		log.Fatalf("failed to parse ECDSA public key: %v", err)
 	}
+
+	insertQueue = &InsertQueue{}
 }
 
 func main() {
@@ -268,7 +292,7 @@ func main() {
 		e.Logger.Fatalf("missing: POST_ISUCONDITION_TARGET_BASE_URL")
 		return
 	}
-
+	go insertIsuConditionScheduled(time.Millisecond * 100)
 	serverPort := fmt.Sprintf(":%v", getEnv("SERVER_APP_PORT", "3000"))
 	e.Logger.Fatal(e.Start(serverPort))
 }
@@ -1262,16 +1286,16 @@ func postIsuCondition(c echo.Context) error {
 	} else if len(req) == 0 {
 		return c.String(http.StatusBadRequest, "bad request body")
 	}
-
-	tx, err := db.Beginx()
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-	defer tx.Rollback()
+	//
+	// tx, err := db.Beginx()
+	// if err != nil {
+	// 	c.Logger().Errorf("db error: %v", err)
+	// 	return c.NoContent(http.StatusInternalServerError)
+	// }
+	// defer tx.Rollback()
 
 	var count int
-	err = tx.Get(&count, "SELECT COUNT(*) FROM `isu` WHERE `jia_isu_uuid` = ?", jiaIsuUUID)
+	err = db.Get(&count, "SELECT COUNT(*) FROM `isu` WHERE `jia_isu_uuid` = ?", jiaIsuUUID)
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -1297,19 +1321,19 @@ func postIsuCondition(c echo.Context) error {
 			Message:    cond.Message,
 		})
 	}
-	_, err = tx.NamedExec("INSERT INTO `isu_condition`"+
-		"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
-		"	VALUES (:jia_isu_uuid, :timestamp, :is_sitting, :condition, :message)", conds)
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-
-	err = tx.Commit()
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
+	// _, err = tx.NamedExec("INSERT INTO `isu_condition`"+
+	// 	"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
+	// 	"	VALUES (:jia_isu_uuid, :timestamp, :is_sitting, :condition, :message)", conds)
+	// if err != nil {
+	// 	c.Logger().Errorf("db error: %v", err)
+	// 	return c.NoContent(http.StatusInternalServerError)
+	// }
+	//
+	// err = tx.Commit()
+	// if err != nil {
+	// 	c.Logger().Errorf("db error: %v", err)
+	// 	return c.NoContent(http.StatusInternalServerError)
+	// }
 
 	return c.NoContent(http.StatusAccepted)
 }
@@ -1345,6 +1369,26 @@ func isValidConditionFormat(conditionStr string) bool {
 	}
 
 	return (idxCondStr == len(conditionStr))
+}
+
+func insertIsuConditionScheduled(interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			q := insertQueue.PopAll()
+			if len(q) == 0 {
+				continue
+			}
+			_, err := db.NamedExec("INSERT INTO `isu_condition`"+
+				"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
+				"	VALUES (:jia_isu_uuid, :timestamp, :is_sitting, :condition, :message)", q)
+			if err != nil {
+				log.Printf("failed to insert isu condition: %v", err)
+			}
+		}
+	}
 }
 
 func getIndex(c echo.Context) error {
