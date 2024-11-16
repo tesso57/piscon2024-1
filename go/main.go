@@ -1197,9 +1197,9 @@ func getTrend(c echo.Context) error {
 				return c.NoContent(http.StatusInternalServerError)
 			}
 			isu := Isu{}
-			for _, isu := range isuList {
+			for _, i := range isuList {
 				if isu.JIAIsuUUID == cond.JIAIsuUUID {
-					isu = isu
+					isu = i
 					break
 				}
 			}
