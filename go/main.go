@@ -180,20 +180,28 @@ type InsertQueue struct {
 	Lock  sync.Mutex
 }
 
+const queueSize = 10240
+
 var insertQueue *InsertQueue
 
-func (iq *InsertQueue) Insert(condition IsuCondition) {
+func (iq *InsertQueue) Insert(conds []IsuCondition) {
 	iq.Lock.Lock()
 	defer iq.Lock.Unlock()
-	iq.Queue = append(iq.Queue, condition)
+	iq.Queue = append(iq.Queue, conds...)
 }
 
 func (iq *InsertQueue) PopAll() []IsuCondition {
 	iq.Lock.Lock()
 	defer iq.Lock.Unlock()
 	queue := iq.Queue
-	iq.Queue = []IsuCondition{}
+	iq.Queue = make([]IsuCondition, 0, queueSize)
 	return queue
+}
+
+func NewQueue() *InsertQueue {
+	return &InsertQueue{
+		Queue: make([]IsuCondition, 0, queueSize),
+	}
 }
 
 func getEnv(key string, defaultValue string) string {
@@ -238,7 +246,7 @@ func init() {
 		log.Fatalf("failed to parse ECDSA public key: %v", err)
 	}
 
-	insertQueue = &InsertQueue{}
+	insertQueue = NewQueue()
 }
 
 func main() {
@@ -1321,6 +1329,7 @@ func postIsuCondition(c echo.Context) error {
 			Message:    cond.Message,
 		})
 	}
+	insertQueue.Insert(conds)
 	// _, err = tx.NamedExec("INSERT INTO `isu_condition`"+
 	// 	"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
 	// 	"	VALUES (:jia_isu_uuid, :timestamp, :is_sitting, :condition, :message)", conds)
