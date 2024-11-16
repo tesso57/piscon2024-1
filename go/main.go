@@ -384,6 +384,23 @@ func postInitialize(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
+	conds := []IsuCondition{}
+	err = db.Select(&conds, "SELECT * FROM `isu_condition`")
+	if err != nil {
+		c.Logger().Errorf("db error : %v", err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	for _, cond := range conds {
+		cond.Level = conditionLevelInfo
+	}
+	_, err = db.NamedExec("INSERT INTO `isu_condition`"+
+		"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level`)"+
+		"	VALUES (:jia_isu_uuid, :timestamp, :is_sitting, :condition, :message, :level)", conds)
+	if err != nil {
+		c.Logger().Errorf("db error : %v", err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+
 	return c.JSON(http.StatusOK, InitializeResponse{
 		Language: "go",
 	})
