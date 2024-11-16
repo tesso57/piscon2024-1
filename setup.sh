@@ -1,6 +1,3 @@
-!#/bin/bash
-
-
 DB_USER=isucon
 DB_PASS=isucon
 DB_PORT=3306
