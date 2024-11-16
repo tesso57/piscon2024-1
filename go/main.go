@@ -92,6 +92,7 @@ type IsuCondition struct {
 	IsSitting  bool      `db:"is_sitting"`
 	Condition  string    `db:"condition"`
 	Message    string    `db:"message"`
+	Level      string    `db:"level"`
 	CreatedAt  time.Time `db:"created_at"`
 }
 
@@ -544,11 +545,7 @@ func getIsuList(c echo.Context) error {
 
 		var formattedCondition *GetIsuConditionResponse
 		if foundLastCondition {
-			conditionLevel, err := calculateConditionLevel(lastCondition.Condition)
-			if err != nil {
-				c.Logger().Error(err)
-				return c.NoContent(http.StatusInternalServerError)
-			}
+			conditionLevel := lastCondition.Level
 
 			formattedCondition = &GetIsuConditionResponse{
 				JIAIsuUUID:     lastCondition.JIAIsuUUID,
@@ -1120,11 +1117,7 @@ func getIsuConditionsFromDB(
 
 	conditionsResponse := []*GetIsuConditionResponse{}
 	for _, c := range conditions {
-		cLevel, err := calculateConditionLevel(c.Condition)
-		if err != nil {
-			continue
-		}
-
+		cLevel := c.Level
 		if _, ok := conditionLevel[cLevel]; ok {
 			data := GetIsuConditionResponse{
 				JIAIsuUUID:     c.JIAIsuUUID,
@@ -1226,11 +1219,7 @@ func getTrend(c echo.Context) error {
 		}
 
 		for _, cond := range recentCondsGroupByID {
-			conditionLevel, err := calculateConditionLevel(cond.Condition)
-			if err != nil {
-				c.Logger().Error(err)
-				return c.NoContent(http.StatusInternalServerError)
-			}
+			conditionLevel := cond.Level
 			trendCondition := TrendCondition{
 				ID:        isuMap[cond.JIAIsuUUID].ID,
 				Timestamp: cond.Timestamp.Unix(),
@@ -1322,12 +1311,18 @@ func postIsuCondition(c echo.Context) error {
 		if !isValidConditionFormat(cond.Condition) {
 			return c.String(http.StatusBadRequest, "bad request body")
 		}
+		level, err := calculateConditionLevel(cond.Condition)
+		if err != nil {
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
 		conds = append(conds, IsuCondition{
 			JIAIsuUUID: jiaIsuUUID,
 			Timestamp:  timestamp,
 			IsSitting:  cond.IsSitting,
 			Condition:  cond.Condition,
 			Message:    cond.Message,
+			Level:      level,
 		})
 	}
 	insertQueue.Insert(conds)
@@ -1392,8 +1387,8 @@ func insertIsuConditionScheduled(interval time.Duration) {
 				continue
 			}
 			_, err := db.NamedExec("INSERT INTO `isu_condition`"+
-				"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
-				"	VALUES (:jia_isu_uuid, :timestamp, :is_sitting, :condition, :message)", q)
+				"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level`)"+
+				"	VALUES (:jia_isu_uuid, :timestamp, :is_sitting, :condition, :message, :level)", q)
 			if err != nil {
 				log.Printf("failed to insert isu condition: %v", err)
 			}
