@@ -8,8 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	stdlog "log"
 	"math/rand"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/exec"
 	"sort"
@@ -18,6 +20,7 @@ import (
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
+	"github.com/felixge/fgprof"
 	"github.com/go-sql-driver/mysql"
 	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
@@ -58,14 +61,14 @@ type Config struct {
 }
 
 type Isu struct {
-	ID         int       `db:"id" json:"id"`
+	ID         int       `db:"id"           json:"id"`
 	JIAIsuUUID string    `db:"jia_isu_uuid" json:"jia_isu_uuid"`
-	Name       string    `db:"name" json:"name"`
-	Image      []byte    `db:"image" json:"-"`
-	Character  string    `db:"character" json:"character"`
-	JIAUserID  string    `db:"jia_user_id" json:"-"`
-	CreatedAt  time.Time `db:"created_at" json:"-"`
-	UpdatedAt  time.Time `db:"updated_at" json:"-"`
+	Name       string    `db:"name"         json:"name"`
+	Image      []byte    `db:"image"        json:"-"`
+	Character  string    `db:"character"    json:"character"`
+	JIAUserID  string    `db:"jia_user_id"  json:"-"`
+	CreatedAt  time.Time `db:"created_at"   json:"-"`
+	UpdatedAt  time.Time `db:"updated_at"   json:"-"`
 }
 
 type IsuFromJIA struct {
@@ -189,7 +192,14 @@ func NewMySQLConnectionEnv() *MySQLConnectionEnv {
 }
 
 func (mc *MySQLConnectionEnv) ConnectDB() (*sqlx.DB, error) {
-	dsn := fmt.Sprintf("%v:%v@tcp(%v:%v)/%v?parseTime=true&loc=Asia%%2FTokyo", mc.User, mc.Password, mc.Host, mc.Port, mc.DBName)
+	dsn := fmt.Sprintf(
+		"%v:%v@tcp(%v:%v)/%v?parseTime=true&loc=Asia%%2FTokyo",
+		mc.User,
+		mc.Password,
+		mc.Host,
+		mc.Port,
+		mc.DBName,
+	)
 	return sqlx.Open("mysql", dsn)
 }
 
@@ -210,6 +220,11 @@ func main() {
 	e := echo.New()
 	e.Debug = true
 	e.Logger.SetLevel(log.DEBUG)
+
+	http.DefaultServeMux.Handle("/debug/fgprof", fgprof.Handler())
+	go func() {
+		stdlog.Print(http.ListenAndServe(":6060", nil))
+	}()
 
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
@@ -293,7 +308,11 @@ func getUserIDFromSession(c echo.Context) (string, int, error) {
 
 func getJIAServiceURL(tx *sqlx.Tx) string {
 	var config Config
-	err := tx.Get(&config, "SELECT * FROM `isu_association_config` WHERE `name` = ?", "jia_service_url")
+	err := tx.Get(
+		&config,
+		"SELECT * FROM `isu_association_config` WHERE `name` = ?",
+		"jia_service_url",
+	)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			log.Print(err)
@@ -343,7 +362,10 @@ func postAuthentication(c echo.Context) error {
 
 	token, err := jwt.Parse(reqJwt, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodECDSA); !ok {
-			return nil, jwt.NewValidationError(fmt.Sprintf("unexpected signing method: %v", token.Header["alg"]), jwt.ValidationErrorSignatureInvalid)
+			return nil, jwt.NewValidationError(
+				fmt.Sprintf("unexpected signing method: %v", token.Header["alg"]),
+				jwt.ValidationErrorSignatureInvalid,
+			)
 		}
 		return jiaJWTSigningKey, nil
 	})
@@ -473,8 +495,11 @@ func getIsuList(c echo.Context) error {
 	for _, isu := range isuList {
 		var lastCondition IsuCondition
 		foundLastCondition := true
-		err = tx.Get(&lastCondition, "SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY `timestamp` DESC LIMIT 1",
-			isu.JIAIsuUUID)
+		err = tx.Get(
+			&lastCondition,
+			"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY `timestamp` DESC LIMIT 1",
+			isu.JIAIsuUUID,
+		)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				foundLastCondition = false
@@ -508,7 +533,8 @@ func getIsuList(c echo.Context) error {
 			JIAIsuUUID:         isu.JIAIsuUUID,
 			Name:               isu.Name,
 			Character:          isu.Character,
-			LatestIsuCondition: formattedCondition}
+			LatestIsuCondition: formattedCondition,
+		}
 		responseList = append(responseList, res)
 	}
 
@@ -619,7 +645,8 @@ func postIsu(c echo.Context) error {
 	}
 
 	if res.StatusCode != http.StatusAccepted {
-		c.Logger().Errorf("JIAService returned error: status code %v, message: %v", res.StatusCode, string(resBody))
+		c.Logger().
+			Errorf("JIAService returned error: status code %v, message: %v", res.StatusCode, string(resBody))
 		return c.String(res.StatusCode, "JIAService returned error")
 	}
 
@@ -630,7 +657,11 @@ func postIsu(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	_, err = tx.Exec("UPDATE `isu` SET `character` = ? WHERE  `jia_isu_uuid` = ?", isuFromJIA.Character, jiaIsuUUID)
+	_, err = tx.Exec(
+		"UPDATE `isu` SET `character` = ? WHERE  `jia_isu_uuid` = ?",
+		isuFromJIA.Character,
+		jiaIsuUUID,
+	)
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -747,8 +778,12 @@ func getIsuGraph(c echo.Context) error {
 	defer tx.Rollback()
 
 	var count int
-	err = tx.Get(&count, "SELECT COUNT(*) FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
-		jiaUserID, jiaIsuUUID)
+	err = tx.Get(
+		&count,
+		"SELECT COUNT(*) FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
+		jiaUserID,
+		jiaIsuUUID,
+	)
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -773,14 +808,21 @@ func getIsuGraph(c echo.Context) error {
 }
 
 // グラフのデータ点を一日分生成
-func generateIsuGraphResponse(tx *sqlx.Tx, jiaIsuUUID string, graphDate time.Time) ([]GraphResponse, error) {
+func generateIsuGraphResponse(
+	tx *sqlx.Tx,
+	jiaIsuUUID string,
+	graphDate time.Time,
+) ([]GraphResponse, error) {
 	dataPoints := []GraphDataPointWithInfo{}
 	conditionsInThisHour := []IsuCondition{}
 	timestampsInThisHour := []int64{}
 	var startTimeInThisHour time.Time
 	var condition IsuCondition
 
-	rows, err := tx.Queryx("SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY `timestamp` ASC", jiaIsuUUID)
+	rows, err := tx.Queryx(
+		"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY `timestamp` ASC",
+		jiaIsuUUID,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("db error: %v", err)
 	}
@@ -804,7 +846,8 @@ func generateIsuGraphResponse(tx *sqlx.Tx, jiaIsuUUID string, graphDate time.Tim
 						JIAIsuUUID:          jiaIsuUUID,
 						StartAt:             startTimeInThisHour,
 						Data:                data,
-						ConditionTimestamps: timestampsInThisHour})
+						ConditionTimestamps: timestampsInThisHour,
+					})
 			}
 
 			startTimeInThisHour = truncatedConditionTime
@@ -826,7 +869,8 @@ func generateIsuGraphResponse(tx *sqlx.Tx, jiaIsuUUID string, graphDate time.Tim
 				JIAIsuUUID:          jiaIsuUUID,
 				StartAt:             startTimeInThisHour,
 				Data:                data,
-				ConditionTimestamps: timestampsInThisHour})
+				ConditionTimestamps: timestampsInThisHour,
+			})
 	}
 
 	endTime := graphDate.Add(time.Hour * 24)
@@ -992,7 +1036,15 @@ func getIsuConditions(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	conditionsResponse, err := getIsuConditionsFromDB(db, jiaIsuUUID, endTime, conditionLevel, startTime, conditionLimit, isuName)
+	conditionsResponse, err := getIsuConditionsFromDB(
+		db,
+		jiaIsuUUID,
+		endTime,
+		conditionLevel,
+		startTime,
+		conditionLimit,
+		isuName,
+	)
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -1001,9 +1053,15 @@ func getIsuConditions(c echo.Context) error {
 }
 
 // ISUのコンディションをDBから取得
-func getIsuConditionsFromDB(db *sqlx.DB, jiaIsuUUID string, endTime time.Time, conditionLevel map[string]interface{}, startTime time.Time,
-	limit int, isuName string) ([]*GetIsuConditionResponse, error) {
-
+func getIsuConditionsFromDB(
+	db *sqlx.DB,
+	jiaIsuUUID string,
+	endTime time.Time,
+	conditionLevel map[string]interface{},
+	startTime time.Time,
+	limit int,
+	isuName string,
+) ([]*GetIsuConditionResponse, error) {
 	conditions := []IsuCondition{}
 	var err error
 
@@ -1126,9 +1184,15 @@ func getTrend(c echo.Context) error {
 				case "info":
 					characterInfoIsuConditions = append(characterInfoIsuConditions, &trendCondition)
 				case "warning":
-					characterWarningIsuConditions = append(characterWarningIsuConditions, &trendCondition)
+					characterWarningIsuConditions = append(
+						characterWarningIsuConditions,
+						&trendCondition,
+					)
 				case "critical":
-					characterCriticalIsuConditions = append(characterCriticalIsuConditions, &trendCondition)
+					characterCriticalIsuConditions = append(
+						characterCriticalIsuConditions,
+						&trendCondition,
+					)
 				}
 			}
 
@@ -1225,7 +1289,6 @@ func postIsuCondition(c echo.Context) error {
 
 // ISUのコンディションの文字列がcsv形式になっているか検証
 func isValidConditionFormat(conditionStr string) bool {
-
 	keys := []string{"is_dirty=", "is_overweight=", "is_broken="}
 	const valueTrue = "true"
 	const valueFalse = "false"
