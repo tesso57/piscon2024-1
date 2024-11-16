@@ -1196,18 +1196,17 @@ func getTrend(c echo.Context) error {
 				c.Logger().Error(err)
 				return c.NoContent(http.StatusInternalServerError)
 			}
-			isu := Isu{}
-			for _, i := range isuList {
+			reqIsu := Isu{}
+			for _, isu := range isuList {
 				if isu.JIAIsuUUID == cond.JIAIsuUUID {
-					isu = i
+					reqIsu = isu
 					break
 				}
 			}
 			trendCondition := TrendCondition{
-				ID:        isu.ID,
+				ID:        reqIsu.ID,
 				Timestamp: cond.Timestamp.Unix(),
 			}
-			log.Printf("conditionLevel: %+v", trendCondition)
 			switch conditionLevel {
 			case "info":
 				characterInfoIsuConditions = append(characterInfoIsuConditions, &trendCondition)
@@ -1243,7 +1242,6 @@ func getTrend(c echo.Context) error {
 			})
 	}
 
-	log.Printf("trend: %+v", res)
 	return c.JSON(http.StatusOK, res)
 }
 
