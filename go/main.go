@@ -1201,7 +1201,7 @@ func getTrend(c echo.Context) error {
 		conds := make([]IsuCondition, 0, 1024)
 		q, arg, err := sqlx.In(
 			"SELECT cond.* FROM `isu_condition` cond "+
-				"INNER JOIN ( SELECT  `jia_isu_uuid`, MAX(`timestamp`) AS `timestamp` FROM `isu_condition`  WHERE `jia_isu_uuid` IN (?) GROUP BY `jia_isu_uuid`) AS latest"+
+				"INNER JOIN ( SELECT  `jia_isu_uuid`, MAX(`timestamp`) AS `timestamp` FROM `isu_condition`  WHERE `jia_isu_uuid` IN (?) GROUP BY `jia_isu_uuid`) AS latest "+
 				"ON cond.`jia_isu_uuid` = latest.`jia_isu_uuid` AND cond.`timestamp` = latest.`timestamp`",
 			uuids,
 		)
