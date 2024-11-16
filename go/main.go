@@ -1164,11 +1164,30 @@ func getTrend(c echo.Context) error {
 			uuids = append(uuids, isu.JIAIsuUUID)
 		}
 
-		conds := []IsuCondition{}
-		err = db.Select(&conds, "SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` IN (?)", uuids)
+		conds := make([]IsuCondition, 0, 1024)
+		q, arg, err := sqlx.In("SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` IN (?)", uuids)
 		if err != nil {
 			c.Logger().Errorf("db error: %v", err)
 			return c.NoContent(http.StatusInternalServerError)
+		}
+
+		q = db.Rebind(q)
+
+		rows, err := db.Queryx(q, arg...)
+		if err != nil {
+			c.Logger().Errorf("db error: %v", err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var cond IsuCondition
+			err = rows.StructScan(&cond)
+			if err != nil {
+				c.Logger().Errorf("db error: %v", err)
+				return c.NoContent(http.StatusInternalServerError)
+			}
+			conds = append(conds, cond)
 		}
 
 		recentCondsGroupByID := make(map[string]IsuCondition)
