@@ -253,14 +253,14 @@ func init() {
 func main() {
 	e := echo.New()
 	e.Debug = true
-	e.Logger.SetLevel(log.DEBUG)
+	// e.Logger.SetLevel(log.DEBUG)
 
 	http.DefaultServeMux.Handle("/debug/fgprof", fgprof.Handler())
 	go func() {
 		stdlog.Print(http.ListenAndServe(":6060", nil))
 	}()
 
-	e.Use(middleware.Logger())
+	// e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
 	e.POST("/initialize", postInitialize)
