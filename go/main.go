@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	stdlog "log"
-	"math/rand/v2"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -585,16 +584,16 @@ func getIsuList(c echo.Context) error {
 	stmt := `
 	SELECT 
 		i.id AS isu_id,
-		i.jia_isu_uuid AS jia_isu_uuid,
-		i.name AS name,
-		i.character AS character,
+		i.jia_isu_uuid AS isu_jia_isu_uuid,
+		i.name AS isu_name,
+		i.character AS isu_character,
 		c.id AS condition_id,
 		c.jia_isu_uuid AS condition_jia_isu_uuid,
 		c.timestamp AS condition_timestamp,
-		c.is_sitting AS is_sitting,
-		c.condition AS condition,
+		c.is_sitting AS condition_is_sitting,
+		c.condition AS condition_condition,
 		c.level AS condition_level,
-		c.message AS message
+		c.message AS condition_message
 	FROM isu AS i
 	LEFT JOIN isu_condition AS c
 	ON c.id = (
@@ -609,16 +608,16 @@ func getIsuList(c echo.Context) error {
 
 	type IsuWithCondition struct {
 		ID                  int        `db:"isu_id"`
-		JIAIsuUUID          string     `db:"jia_isu_uuid"`
-		Name                string     `db:"name"`
-		Character           string     `db:"character"`
+		JIAIsuUUID          string     `db:"isu_jia_isu_uuid"`
+		Name                string     `db:"isu_name"`
+		Character           string     `db:"isu_character"`
 		ConditionID         *int       `db:"condition_id"`
 		ConditionJIAIsuUUID *string    `db:"condition_jia_isu_uuid"`
 		ConditionTimestamp  *time.Time `db:"condition_timestamp"`
-		IsSitting           *bool      `db:"is_sitting"`
-		Condition           *string    `db:"condition"`
+		IsSitting           *bool      `db:"condition_is_sitting"`
+		Condition           *string    `db:"condition_condition"`
 		ConditionLevel      *string    `db:"condition_level"`
-		Message             *string    `db:"message"`
+		Message             *string    `db:"condition_message"`
 	}
 
 	isuList := []IsuWithCondition{}
@@ -1373,12 +1372,12 @@ func calculateTrendScheduled(interval time.Duration) {
 // ISUからのコンディションを受け取る
 func postIsuCondition(c echo.Context) error {
 	// TODO: 一定割合リクエストを落としてしのぐようにしたが、本来は全量さばけるようにすべき
-	dropProbability := 0.3
-	if rand.Float64() <= dropProbability {
-		c.Logger().Warnf("drop post isu condition request")
-		return c.NoContent(http.StatusAccepted)
-	}
-
+	// dropProbability := 0.3
+	// if rand.Float64() <= dropProbability {
+	// 	c.Logger().Warnf("drop post isu condition request")
+	// 	return c.NoContent(http.StatusAccepted)
+	// }
+	//
 	jiaIsuUUID := c.Param("jia_isu_uuid")
 	if jiaIsuUUID == "" {
 		return c.String(http.StatusBadRequest, "missing: jia_isu_uuid")
