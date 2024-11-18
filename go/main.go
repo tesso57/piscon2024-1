@@ -252,7 +252,7 @@ func init() {
 
 func main() {
 	e := echo.New()
-	e.Debug = true
+	// e.Debug = true
 	// e.Logger.SetLevel(log.DEBUG)
 
 	http.DefaultServeMux.Handle("/debug/fgprof", fgprof.Handler())
@@ -293,7 +293,8 @@ func main() {
 		e.Logger.Fatalf("failed to connect db: %v", err)
 		return
 	}
-	db.SetMaxOpenConns(20)
+	db.SetMaxOpenConns(1024)
+	db.SetMaxIdleConns(1024)
 	defer db.Close()
 
 	postIsuConditionTargetBaseURL = os.Getenv("POST_ISUCONDITION_TARGET_BASE_URL")
