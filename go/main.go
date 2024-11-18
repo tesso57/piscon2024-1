@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	stdlog "log"
-	"math/rand"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -55,6 +54,7 @@ var (
 	jiaJWTSigningKey *ecdsa.PublicKey
 
 	postIsuConditionTargetBaseURL string // JIAへのactivate時に登録する，ISUがconditionを送る先のURL
+	isuMap                        map[string]struct{}
 )
 
 type Config struct {
@@ -175,7 +175,6 @@ type JIAServiceRequest struct {
 	TargetBaseURL string `json:"target_base_url"`
 	IsuUUID       string `json:"isu_uuid"`
 }
-
 type TrendCache struct {
 	res  []TrendResponse
 	Lock sync.Mutex
@@ -433,6 +432,16 @@ func postInitialize(c echo.Context) error {
 			c.Logger().Errorf("db error : %v", err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
+	}
+
+	isu := []Isu{}
+	err = db.Select(&isu, "SELECT * FROM `isu`")
+	if err != nil {
+		c.Logger().Errorf("db error : %v", err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	for _, isu := range isu {
+		isuMap[isu.JIAIsuUUID] = struct{}{}
 	}
 
 	return c.JSON(http.StatusOK, InitializeResponse{
@@ -696,6 +705,7 @@ func postIsu(c echo.Context) error {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+	isuMap[jiaIsuUUID] = struct{}{}
 
 	targetURL := getJIAServiceURL(tx) + "/api/activate"
 	body := JIAServiceRequest{postIsuConditionTargetBaseURL, jiaIsuUUID}
@@ -714,7 +724,6 @@ func postIsu(c echo.Context) error {
 	reqJIA.Header.Set("Content-Type", "application/json")
 	res, err := http.DefaultClient.Do(reqJIA)
 	if err != nil {
-		c.Logger().Errorf("failed to request to JIAService: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 	defer res.Body.Close()
@@ -764,6 +773,7 @@ func postIsu(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
+	c.Logger().Errorf("failed to request to JIAService: %v", err)
 	return c.JSON(http.StatusCreated, isu)
 }
 
@@ -1333,11 +1343,11 @@ func calculateTrendScheduled(interval time.Duration) {
 // ISUからのコンディションを受け取る
 func postIsuCondition(c echo.Context) error {
 	// TODO: 一定割合リクエストを落としてしのぐようにしたが、本来は全量さばけるようにすべき
-	dropProbability := 0.0
-	if rand.Float64() <= dropProbability {
-		c.Logger().Warnf("drop post isu condition request")
-		return c.NoContent(http.StatusAccepted)
-	}
+	// dropProbability := 0.0
+	// if rand.Float64() <= dropProbability {
+	// 	c.Logger().Warnf("drop post isu condition request")
+	// 	return c.NoContent(http.StatusAccepted)
+	// }
 
 	jiaIsuUUID := c.Param("jia_isu_uuid")
 	if jiaIsuUUID == "" {
@@ -1359,17 +1369,19 @@ func postIsuCondition(c echo.Context) error {
 	// }
 	// defer tx.Rollback()
 
-	var count int
-	err = db.Get(&count, "SELECT 1 FROM `isu` WHERE `jia_isu_uuid` = ? LIMIT 1", jiaIsuUUID)
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-	if count == 0 {
+	// var count int
+	// err = db.Get(&count, "SELECT 1 FROM `isu` WHERE `jia_isu_uuid` = ? LIMIT 1", jiaIsuUUID)
+	// if err != nil {
+	// 	c.Logger().Errorf("db error: %v", err)
+	// 	return c.NoContent(http.StatusInternalServerError)
+	// }
+	if _, ok := isuMap[jiaIsuUUID]; !ok {
 		return c.String(http.StatusNotFound, "not found: isu")
 	}
+	// if count == 0 {
+	// 	return c.String(http.StatusNotFound, "not found: isu")
+	// }
 
-	// bulkinsert
 	conds := make([]IsuCondition, 0, len(req))
 
 	for _, cond := range req {
