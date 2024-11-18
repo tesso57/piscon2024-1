@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	stdlog "log"
+	"math/rand/v2"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -1351,11 +1352,11 @@ func calculateTrendScheduled(interval time.Duration) {
 // ISUからのコンディションを受け取る
 func postIsuCondition(c echo.Context) error {
 	// TODO: 一定割合リクエストを落としてしのぐようにしたが、本来は全量さばけるようにすべき
-	// dropProbability := 0.0
-	// if rand.Float64() <= dropProbability {
-	// 	c.Logger().Warnf("drop post isu condition request")
-	// 	return c.NoContent(http.StatusAccepted)
-	// }
+	dropProbability := 0.3
+	if rand.Float64() <= dropProbability {
+		c.Logger().Warnf("drop post isu condition request")
+		return c.NoContent(http.StatusAccepted)
+	}
 
 	jiaIsuUUID := c.Param("jia_isu_uuid")
 	if jiaIsuUUID == "" {
