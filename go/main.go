@@ -176,6 +176,31 @@ type JIAServiceRequest struct {
 	IsuUUID       string `json:"isu_uuid"`
 }
 
+type TrendCache struct {
+	res  []TrendResponse
+	Lock sync.Mutex
+}
+
+func (tc *TrendCache) Get() []TrendResponse {
+	tc.Lock.Lock()
+	defer tc.Lock.Unlock()
+	return tc.res
+}
+
+func (tc *TrendCache) Set(res []TrendResponse) {
+	tc.Lock.Lock()
+	defer tc.Lock.Unlock()
+	tc.res = res
+}
+
+var trendCache *TrendCache
+
+func NewTrendCache() *TrendCache {
+	return &TrendCache{
+		res: make([]TrendResponse, 0, 1024),
+	}
+}
+
 type InsertQueue struct {
 	Queue []IsuCondition
 	Lock  sync.Mutex
@@ -248,6 +273,7 @@ func init() {
 	}
 
 	insertQueue = NewQueue()
+	trendCache = NewTrendCache()
 }
 
 func main() {
@@ -302,7 +328,8 @@ func main() {
 		e.Logger.Fatalf("missing: POST_ISUCONDITION_TARGET_BASE_URL")
 		return
 	}
-	go insertIsuConditionScheduled(time.Millisecond * 500)
+	go insertIsuConditionScheduled(time.Millisecond * 800)
+	go calculateTrendScheduled(time.Millisecond * 100)
 	serverPort := fmt.Sprintf(":%v", getEnv("SERVER_APP_PORT", "3000"))
 	e.Logger.Fatal(e.Start(serverPort))
 }
@@ -1200,11 +1227,19 @@ func calculateConditionLevel(condition string) (string, error) {
 // GET /api/trend
 // ISUの性格毎の最新のコンディション情報
 func getTrend(c echo.Context) error {
+	res := trendCache.Get()
+	if len(res) == 0 {
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	return c.JSON(http.StatusOK, res)
+}
+
+func calculateTrend() []TrendResponse {
 	characterList := []Isu{}
 	err := db.Select(&characterList, "SELECT `character` FROM `isu` GROUP BY `character`")
 	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
+		log.Errorf("db error: %v", err)
+		return nil
 	}
 
 	res := []TrendResponse{}
@@ -1216,8 +1251,8 @@ func getTrend(c echo.Context) error {
 			character.Character,
 		)
 		if err != nil {
-			c.Logger().Errorf("db error: %v", err)
-			return c.NoContent(http.StatusInternalServerError)
+			log.Errorf("db error: %v", err)
+			return nil
 		}
 
 		characterInfoIsuConditions := []*TrendCondition{}
@@ -1238,16 +1273,16 @@ func getTrend(c echo.Context) error {
 			uuids,
 		)
 		if err != nil {
-			c.Logger().Errorf("db error: %v", err)
-			return c.NoContent(http.StatusInternalServerError)
+			log.Errorf("db error: %v", err)
+			return nil
 		}
 
 		q = db.Rebind(q)
 
 		err = db.Select(&conds, q, arg...)
 		if err != nil {
-			c.Logger().Errorf("db error: %v", err)
-			return c.NoContent(http.StatusInternalServerError)
+			log.Errorf("db error: %v", err)
+			return nil
 		}
 
 		recentCondsGroupByID := make(map[string]IsuCondition)
@@ -1298,7 +1333,19 @@ func getTrend(c echo.Context) error {
 			})
 	}
 
-	return c.JSON(http.StatusOK, res)
+	return res
+}
+
+func calculateTrendScheduled(interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			trend := calculateTrend()
+			trendCache.Set(trend)
+		}
+	}
 }
 
 // POST /api/condition/:jia_isu_uuid
