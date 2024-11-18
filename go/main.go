@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	stdlog "log"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -19,7 +18,6 @@ import (
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
-	"github.com/felixge/fgprof"
 	"github.com/go-sql-driver/mysql"
 	"github.com/goccy/go-json"
 	"github.com/gorilla/sessions"
@@ -281,11 +279,11 @@ func main() {
 	// e.Debug = true
 	// e.Logger.SetLevel(log.DEBUG)
 
-	http.DefaultServeMux.Handle("/debug/fgprof", fgprof.Handler())
-	go func() {
-		stdlog.Print(http.ListenAndServe(":6060", nil))
-	}()
-
+	// http.DefaultServeMux.Handle("/debug/fgprof", fgprof.Handler())
+	// go func() {
+	// 	stdlog.Print(http.ListenAndServe(":6060", nil))
+	// }()
+	//
 	// e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
