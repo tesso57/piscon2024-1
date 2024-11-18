@@ -328,9 +328,9 @@ func main() {
 	}
 
 	if os.Getenv("SRVNO") == "1" {
-		go insertIsuConditionScheduled(time.Millisecond * 800)
+		go insertIsuConditionScheduled(time.Millisecond * 100)
 	} else {
-		go calculateTrendScheduled(time.Millisecond * 500)
+		go calculateTrendScheduled(time.Millisecond * 100)
 	}
 
 	serverPort := fmt.Sprintf(":%v", getEnv("SERVER_APP_PORT", "3000"))
