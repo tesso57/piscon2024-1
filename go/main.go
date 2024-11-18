@@ -600,7 +600,7 @@ func getIsuList(c echo.Context) error {
 		SELECT c2.id
 		FROM isu_condition AS c2
 		WHERE c2.jia_isu_uuid = i.jia_isu_uuid
-		ORDER BY c2.timestamp DESC LIMIT 1
+		ORDER BY timestamp DESC LIMIT 1
 	)
 	WHERE i.jia_user_id = ?
 	ORDER BY i.id DESC
@@ -631,11 +631,10 @@ func getIsuList(c echo.Context) error {
 	responseList := make([]GetIsuListResponse, 0, len(isuList))
 
 	for _, isu := range isuList {
-		foundLastCondition := true
 		var formattedCondition *GetIsuConditionResponse
-		if foundLastCondition {
+		if isu.ConditionID != nil {
 			formattedCondition = &GetIsuConditionResponse{
-				JIAIsuUUID:     isu.JIAIsuUUID,
+				JIAIsuUUID:     *isu.ConditionJIAIsuUUID,
 				IsuName:        isu.Name,
 				Timestamp:      (*isu.ConditionTimestamp).Unix(),
 				IsSitting:      *isu.IsSitting,
