@@ -53,6 +53,7 @@ var (
 
 	postIsuConditionTargetBaseURL string // JIAへのactivate時に登録する，ISUがconditionを送る先のURL
 	isuMap                        map[string]struct{}
+	userMap                       map[string]struct{}
 )
 
 type Config struct {
@@ -272,6 +273,7 @@ func init() {
 	insertQueue = NewQueue()
 	trendCache = NewTrendCache()
 	isuMap = make(map[string]struct{})
+	userMap = make(map[string]struct{})
 }
 
 func main() {
@@ -356,18 +358,21 @@ func getUserIDFromSession(c echo.Context) (string, int, error) {
 	}
 
 	jiaUserID := _jiaUserID.(string)
-	var count int
+	// var count int
 
-	err = db.Get(&count, "SELECT COUNT(*) FROM `user` WHERE `jia_user_id` = ?",
-		jiaUserID)
-	if err != nil {
-		return "", http.StatusInternalServerError, fmt.Errorf("db error: %v", err)
-	}
+	// err = db.Get(&count, "SELECT COUNT(*) FROM `user` WHERE `jia_user_id` = ?",
+	// 	jiaUserID)
+	// if err != nil {
+	// 	return "", http.StatusInternalServerError, fmt.Errorf("db error: %v", err)
+	// }
 
-	if count == 0 {
+	if _, ok := userMap[jiaUserID]; !ok {
 		return "", http.StatusUnauthorized, fmt.Errorf("not found: user")
 	}
-
+	// if count == 0 {
+	// 	return "", http.StatusUnauthorized, fmt.Errorf("not found: user")
+	// }
+	//
 	return jiaUserID, 0, nil
 }
 
@@ -448,6 +453,16 @@ func postInitialize(c echo.Context) error {
 		isuMap[isu.JIAIsuUUID] = struct{}{}
 	}
 
+	user := []string{}
+	err = db.Select(&user, "SELECT `jia_user_id` FROM `user`")
+	if err != nil {
+		c.Logger().Errorf("db error : %v", err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	for _, user := range user {
+		userMap[user] = struct{}{}
+	}
+
 	return c.JSON(http.StatusOK, InitializeResponse{
 		Language: "go",
 	})
@@ -496,6 +511,8 @@ func postAuthentication(c echo.Context) error {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+
+	userMap[jiaUserID] = struct{}{}
 
 	session, err := getSession(c.Request())
 	if err != nil {
