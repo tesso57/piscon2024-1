@@ -273,6 +273,7 @@ func init() {
 
 	insertQueue = NewQueue()
 	trendCache = NewTrendCache()
+	isuMap = make(map[string]struct{})
 }
 
 func main() {
