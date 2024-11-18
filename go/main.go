@@ -1259,58 +1259,39 @@ func calculateTrend() []TrendResponse {
 		characterWarningIsuConditions := []*TrendCondition{}
 		characterCriticalIsuConditions := []*TrendCondition{}
 
-		isuMap := make(map[string]Isu)
 		for _, isu := range isuList {
-			isuMap[isu.JIAIsuUUID] = isu
-		}
-
-		uuids := maps.Keys(isuMap)
-		conds := make([]IsuCondition, 0, 1024)
-		q, arg, err := sqlx.In(
-			"SELECT cond.* FROM `isu_condition` cond "+
-				"INNER JOIN ( SELECT  `jia_isu_uuid`, MAX(`timestamp`) AS `timestamp` FROM `isu_condition`  WHERE `jia_isu_uuid` IN (?) GROUP BY `jia_isu_uuid`) AS latest "+
-				"ON cond.`jia_isu_uuid` = latest.`jia_isu_uuid` AND cond.`timestamp` = latest.`timestamp`",
-			uuids,
-		)
-		if err != nil {
-			log.Errorf("db error: %v", err)
-			return nil
-		}
-
-		q = db.Rebind(q)
-
-		err = db.Select(&conds, q, arg...)
-		if err != nil {
-			log.Errorf("db error: %v", err)
-			return nil
-		}
-
-		recentCondsGroupByID := make(map[string]IsuCondition)
-		for _, c := range conds {
-			if _, ok := recentCondsGroupByID[c.JIAIsuUUID]; !ok {
-				recentCondsGroupByID[c.JIAIsuUUID] = c
+			conds := make([]IsuCondition, 0, 1024)
+			err = db.Select(
+				&conds,
+				"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY timestamp DESC LIMIT 1",
+				isu.JIAIsuUUID,
+			)
+			if err != nil {
+				log.Errorf("db error: %v", err)
+				return nil
 			}
-		}
+			if len(conds) > 0 {
+				cond := conds[0]
 
-		for _, cond := range recentCondsGroupByID {
-			conditionLevel := cond.Level
-			trendCondition := TrendCondition{
-				ID:        isuMap[cond.JIAIsuUUID].ID,
-				Timestamp: cond.Timestamp.Unix(),
-			}
-			switch conditionLevel {
-			case "info":
-				characterInfoIsuConditions = append(characterInfoIsuConditions, &trendCondition)
-			case "warning":
-				characterWarningIsuConditions = append(
-					characterWarningIsuConditions,
-					&trendCondition,
-				)
-			case "critical":
-				characterCriticalIsuConditions = append(
-					characterCriticalIsuConditions,
-					&trendCondition,
-				)
+				conditionLevel := cond.Level
+				trendCondition := TrendCondition{
+					ID:        isu.ID,
+					Timestamp: cond.Timestamp.Unix(),
+				}
+				switch conditionLevel {
+				case "info":
+					characterInfoIsuConditions = append(characterInfoIsuConditions, &trendCondition)
+				case "warning":
+					characterWarningIsuConditions = append(
+						characterWarningIsuConditions,
+						&trendCondition,
+					)
+				case "critical":
+					characterCriticalIsuConditions = append(
+						characterCriticalIsuConditions,
+						&trendCondition,
+					)
+				}
 			}
 		}
 
