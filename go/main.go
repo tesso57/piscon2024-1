@@ -453,13 +453,13 @@ func postInitialize(c echo.Context) error {
 		isuMap[isu.JIAIsuUUID] = struct{}{}
 	}
 
-	user := []string{}
-	err = db.Select(&user, "SELECT `jia_user_id` FROM `user`")
+	users := []string{}
+	err = db.Select(&users, "SELECT `jia_user_id` FROM `user`")
 	if err != nil {
 		c.Logger().Errorf("db error : %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
-	for _, user := range user {
+	for _, user := range users {
 		userMap[user] = struct{}{}
 	}
 
