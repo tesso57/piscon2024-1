@@ -469,7 +469,7 @@ func getUserIDFromSession(c echo.Context) (string, int, error) {
 		c.Logger().Error(err)
 		return "", http.StatusInternalServerError, fmt.Errorf("failed to get session: %v", err)
 	}
-	fmt.Printf("session %+v", session)
+	fmt.Printf("session %+v\n", session.Values)
 	_jiaUserID, ok := session.Values["jia_user_id"]
 	if !ok {
 		c.Logger().Errorf("no session")
