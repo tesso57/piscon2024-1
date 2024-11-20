@@ -613,6 +613,7 @@ func postAuthentication(c echo.Context) error {
 	}
 
 	sess.Values["jia_user_id"] = jiaUserID
+	sess.Options.Secure = false
 	err = sess.Save(c.Request(), c.Response())
 	if err != nil {
 		c.Logger().Error(err)
