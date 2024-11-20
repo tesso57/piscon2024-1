@@ -52,8 +52,8 @@ var (
 	jiaJWTSigningKey *ecdsa.PublicKey
 
 	postIsuConditionTargetBaseURL string // JIAへのactivate時に登録する，ISUがconditionを送る先のURL
-	isuMap                        map[string]*Isu
-	userMap                       map[string]struct{}
+	isuCache                      *IsuCache
+	userCache                     *UserCache
 	defaultIcon                   []byte
 )
 
@@ -175,17 +175,59 @@ type JIAServiceRequest struct {
 	TargetBaseURL string `json:"target_base_url"`
 	IsuUUID       string `json:"isu_uuid"`
 }
+type IsuCache struct {
+	cache map[string]*Isu
+	Lock  sync.Mutex
+}
 
-func fetchIsu(jiaIsuUUID string) (*Isu, error) {
-	var isu Isu
-	err := db.Get(&isu, "SELECT * FROM `isu` WHERE `jia_isu_uuid` = ?", jiaIsuUUID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, sql.ErrNoRows
+func (ic *IsuCache) Get(jiaIsuUUID string) (*Isu, error) {
+	ic.Lock.Lock()
+	defer ic.Lock.Unlock()
+	isu, ok := ic.cache[jiaIsuUUID]
+	if !ok {
+		var i Isu
+		err := db.Get(&i, "SELECT * FROM `isu` WHERE `jia_isu_uuid` = ?", jiaIsuUUID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, sql.ErrNoRows
+			}
+			return nil, err
 		}
-		return nil, err
+		ic.cache[jiaIsuUUID] = &i
+		return &i, nil
 	}
-	return &isu, nil
+	return isu, nil
+}
+
+func (ic *IsuCache) Forget(jiaIsuUUID string) {
+	ic.Lock.Lock()
+	defer ic.Lock.Unlock()
+	delete(ic.cache, jiaIsuUUID)
+}
+
+type UserCache struct {
+	cache map[string]struct{}
+	Lock  sync.Mutex
+}
+
+func (uc *UserCache) Get(jiaUserID string) (bool, error) {
+	uc.Lock.Lock()
+	defer uc.Lock.Unlock()
+	_, ok := uc.cache[jiaUserID]
+	if !ok {
+		var count int
+		err := db.Get(&count, "SELECT COUNT(*) FROM `user` WHERE `jia_user_id` = ?",
+			jiaUserID)
+		if err != nil {
+			return false, fmt.Errorf("db error: %v", err)
+		}
+		if count == 0 {
+			return false, sql.ErrNoRows
+		}
+		uc.cache[jiaUserID] = struct{}{}
+		return true, nil
+	}
+	return ok, nil
 }
 
 type TrendCache struct {
@@ -286,12 +328,17 @@ func init() {
 
 	insertQueue = NewQueue()
 	trendCache = NewTrendCache()
-	isuMap = make(map[string]*Isu)
-	userMap = make(map[string]struct{})
 
 	defaultIcon, err = os.ReadFile(defaultIconFilePath)
 	if err != nil {
 		log.Fatalf("failed to read file: %v", err)
+	}
+
+	isuCache = &IsuCache{
+		cache: make(map[string]*Isu),
+	}
+	userCache = &UserCache{
+		cache: make(map[string]struct{}),
 	}
 }
 
@@ -377,22 +424,14 @@ func getUserIDFromSession(c echo.Context) (string, int, error) {
 	}
 
 	jiaUserID := _jiaUserID.(string)
-	if _, ok := userMap[jiaUserID]; !ok {
-		var count int
-		err = db.Get(&count, "SELECT COUNT(*) FROM `user` WHERE `jia_user_id` = ?",
-			jiaUserID)
-		if err != nil {
-			return "", http.StatusInternalServerError, fmt.Errorf("db error: %v", err)
-		}
-		if count == 0 {
+
+	if _, err := userCache.Get(jiaUserID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
 			return "", http.StatusUnauthorized, fmt.Errorf("not found: user")
 		}
-		userMap[jiaUserID] = struct{}{}
+		return "", http.StatusInternalServerError, fmt.Errorf("db error: %v", err)
 	}
-	// if count == 0 {
-	// 	return "", http.StatusUnauthorized, fmt.Errorf("not found: user")
-	// }
-	//
+
 	return jiaUserID, 0, nil
 }
 
@@ -463,26 +502,6 @@ func postInitialize(c echo.Context) error {
 		}
 	}
 
-	isu := []Isu{}
-	err = db.Select(&isu, "SELECT * FROM `isu`")
-	if err != nil {
-		c.Logger().Errorf("db error : %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-	for _, isu := range isu {
-		isuMap[isu.JIAIsuUUID] = &isu
-	}
-
-	users := []string{}
-	err = db.Select(&users, "SELECT `jia_user_id` FROM `user`")
-	if err != nil {
-		c.Logger().Errorf("db error : %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-	for _, user := range users {
-		userMap[user] = struct{}{}
-	}
-
 	return c.JSON(http.StatusOK, InitializeResponse{
 		Language: "go",
 	})
@@ -531,8 +550,6 @@ func postAuthentication(c echo.Context) error {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
-
-	userMap[jiaUserID] = struct{}{}
 
 	session, err := getSession(c.Request())
 	if err != nil {
@@ -829,8 +846,7 @@ func postIsu(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	delete(isuMap, jiaIsuUUID)
-
+	isuCache.Forget(jiaIsuUUID)
 	return c.JSON(http.StatusCreated, isu)
 }
 
@@ -861,17 +877,13 @@ func getIsuID(c echo.Context) error {
 	// 	return c.NoContent(http.StatusInternalServerError)
 	// }
 
-	isu, ok := isuMap[jiaIsuUUID]
-	if !ok {
-		isu, err = fetchIsu(jiaIsuUUID)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return c.String(http.StatusNotFound, "not found: isu")
-			}
-			c.Logger().Error(err)
-			return c.NoContent(http.StatusInternalServerError)
+	isu, err := isuCache.Get(jiaIsuUUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return c.String(http.StatusNotFound, "not found: isu")
 		}
-		isuMap[jiaIsuUUID] = isu
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
 	}
 
 	if isu.JIAUserID != jiaUserID {
@@ -895,18 +907,14 @@ func getIsuIcon(c echo.Context) error {
 
 	jiaIsuUUID := c.Param("jia_isu_uuid")
 
-	isu, ok := isuMap[jiaIsuUUID]
-	if !ok {
-		isu, err = fetchIsu(jiaIsuUUID)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return c.String(http.StatusNotFound, "not found: isu")
-			}
-
-			c.Logger().Error(err)
-			return c.NoContent(http.StatusInternalServerError)
+	isu, err := isuCache.Get(jiaIsuUUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return c.String(http.StatusNotFound, "not found: isu")
 		}
-		isuMap[jiaIsuUUID] = isu
+
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
 	}
 
 	if isu.JIAUserID != jiaUserID {
@@ -1456,16 +1464,13 @@ func postIsuCondition(c echo.Context) error {
 	// 	c.Logger().Errorf("db error: %v", err)
 	// 	return c.NoContent(http.StatusInternalServerError)
 	// }
-	if _, ok := isuMap[jiaIsuUUID]; !ok {
-		isu, err := fetchIsu(jiaIsuUUID)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return c.String(http.StatusNotFound, "not found: isu")
-			}
-			c.Logger().Error(err)
-			return c.NoContent(http.StatusInternalServerError)
+	_, err = isuCache.Get(jiaIsuUUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return c.String(http.StatusNotFound, "not found: isu")
 		}
-		isuMap[jiaIsuUUID] = isu
+		c.Logger().Error(err)
+		return c.NoContent(http.StatusInternalServerError)
 	}
 	// if count == 0 {
 	// 	return c.String(http.StatusNotFound, "not found: isu")
