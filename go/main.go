@@ -23,6 +23,7 @@ import (
 	"github.com/goccy/go-json"
 	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
+	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/labstack/gommon/log"
@@ -401,6 +402,10 @@ func main() {
 	// e.JSONSerializer = &JSONSerializer{}
 	e.POST("/initialize", postInitialize)
 
+	e.Use(
+		session.Middleware(sessions.NewCookieStore([]byte(getEnv("SESSION_KEY", "isucondition")))),
+	)
+
 	e.POST("/api/auth", postAuthentication)
 	e.POST("/api/signout", postSignout)
 	e.GET("/api/user/me", getMe)
@@ -458,16 +463,8 @@ func main() {
 	e.Logger.Fatal(e.Start(serverPort))
 }
 
-func getSession(r *http.Request) (*sessions.Session, error) {
-	session, err := sessionStore.Get(r, sessionName)
-	if err != nil {
-		return nil, err
-	}
-	return session, nil
-}
-
 func getUserIDFromSession(c echo.Context) (string, int, error) {
-	session, err := getSession(c.Request())
+	session, err := session.Get(sessionName, c)
 	if err != nil {
 		c.Logger().Error(err)
 		return "", http.StatusInternalServerError, fmt.Errorf("failed to get session: %v", err)
@@ -609,15 +606,14 @@ func postAuthentication(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	session, err := getSession(c.Request())
+	sess, err := session.Get(sessionName, c)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	fmt.Printf("session %+v\n", session)
-	session.Values["jia_user_id"] = jiaUserID
-	err = session.Save(c.Request(), c.Response())
+	sess.Values["jia_user_id"] = jiaUserID
+	err = sess.Save(c.Request(), c.Response())
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -639,14 +635,14 @@ func postSignout(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	session, err := getSession(c.Request())
+	sess, err := session.Get(sessionName, c)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	session.Options = &sessions.Options{MaxAge: -1, Path: "/"}
-	err = session.Save(c.Request(), c.Response())
+	sess.Options = &sessions.Options{MaxAge: -1, Path: "/"}
+	err = sess.Save(c.Request(), c.Response())
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
