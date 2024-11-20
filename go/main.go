@@ -469,10 +469,12 @@ func getSession(r *http.Request) (*sessions.Session, error) {
 func getUserIDFromSession(c echo.Context) (string, int, error) {
 	session, err := getSession(c.Request())
 	if err != nil {
+		c.Logger().Error(err)
 		return "", http.StatusInternalServerError, fmt.Errorf("failed to get session: %v", err)
 	}
 	_jiaUserID, ok := session.Values["jia_user_id"]
 	if !ok {
+		c.Logger().Errorf("no session")
 		return "", http.StatusUnauthorized, fmt.Errorf("no session")
 	}
 
