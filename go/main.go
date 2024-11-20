@@ -867,8 +867,9 @@ func getIsuIcon(c echo.Context) error {
 
 	image, ok := iconMap[fmt.Sprintf("%s:%s", jiaIsuUUID, jiaUserID)]
 	if !ok {
+		var img []byte
 		err = db.Get(
-			&image,
+			&img,
 			"SELECT `image` FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
 			jiaUserID,
 			jiaIsuUUID,
@@ -881,7 +882,8 @@ func getIsuIcon(c echo.Context) error {
 			c.Logger().Errorf("db error: %v", err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
-		iconMap[jiaIsuUUID] = image
+		iconMap[fmt.Sprintf("%s:%s", jiaIsuUUID, jiaUserID)] = img
+		image = img
 	}
 
 	return c.Blob(http.StatusOK, "", image)
