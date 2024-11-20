@@ -441,15 +441,15 @@ func main() {
 
 	if os.Getenv("SRVNO") == "1" {
 		go insertIsuConditionScheduled(time.Millisecond * 100)
-		listener, isUnixDomainSock, err := newUnixDomainSockListener()
-		if err != nil {
-			e.Logger.Fatalf("failed to create unix domain socket listener: %v", err)
-			return
-		}
-
-		if isUnixDomainSock {
-			e.Listener = listener
-		}
+		// listener, isUnixDomainSock, err := newUnixDomainSockListener()
+		// if err != nil {
+		// 	e.Logger.Fatalf("failed to create unix domain socket listener: %v", err)
+		// 	return
+		// }
+		//
+		// if isUnixDomainSock {
+		// 	e.Listener = listener
+		// }
 		// } else {
 		go calculateTrendScheduled(time.Millisecond * 100)
 	}
