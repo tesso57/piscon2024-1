@@ -454,8 +454,8 @@ func main() {
 		go calculateTrendScheduled(time.Millisecond * 100)
 	}
 
-	// serverPort := fmt.Sprintf(":%v", getEnv("SERVER_APP_PORT", "3000"))
-	e.Logger.Fatal(e.StartServer(e.Server))
+	serverPort := fmt.Sprintf(":%v", getEnv("SERVER_APP_PORT", "3000"))
+	e.Logger.Fatal(e.Start(serverPort))
 }
 
 func getSession(r *http.Request) (*sessions.Session, error) {
