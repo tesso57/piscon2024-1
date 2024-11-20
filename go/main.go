@@ -56,7 +56,7 @@ var (
 	isuCache                      *IsuCache
 	userCache                     *UserCache
 	defaultIcon                   []byte
-	unixDomainSockPath            = getEnv("UNIX_DOMAIN_SOCKET_PATH", "")
+	unixDomainSockPath            = "/tmp/isucondition.sock"
 )
 
 type Config struct {
@@ -441,19 +441,19 @@ func main() {
 
 	if os.Getenv("SRVNO") == "1" {
 		go insertIsuConditionScheduled(time.Millisecond * 100)
+		listener, isUnixDomainSock, err := newUnixDomainSockListener()
+		if err != nil {
+			e.Logger.Fatalf("failed to create unix domain socket listener: %v", err)
+			return
+		}
+
+		if isUnixDomainSock {
+			e.Listener = listener
+		}
 	} else {
 		go calculateTrendScheduled(time.Millisecond * 100)
 	}
 
-	listener, isUnixDomainSock, err := newUnixDomainSockListener()
-	if err != nil {
-		e.Logger.Fatalf("failed to create unix domain socket listener: %v", err)
-		return
-	}
-
-	if isUnixDomainSock {
-		e.Listener = listener
-	}
 	serverPort := fmt.Sprintf(":%v", getEnv("SERVER_APP_PORT", "3000"))
 	e.Logger.Fatal(e.Start(serverPort))
 }
