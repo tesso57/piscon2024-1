@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -55,6 +56,7 @@ var (
 	isuCache                      *IsuCache
 	userCache                     *UserCache
 	defaultIcon                   []byte
+	unixDomainSockPath            = getEnv("UNIX_DOMAIN_SOCKET_PATH", "")
 )
 
 type Config struct {
@@ -342,6 +344,48 @@ func init() {
 	}
 }
 
+func newUnixDomainSockListener() (net.Listener, bool, error) {
+	if len(unixDomainSockPath) == 0 {
+		return nil, false, nil
+	}
+
+	err := os.Remove(unixDomainSockPath)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, false, fmt.Errorf("failed to remove socket file: %w", err)
+	}
+
+	listener, err := net.Listen("unix", unixDomainSockPath)
+	if err != nil {
+		return nil, false, fmt.Errorf("unix domain sock listen error: %w", err)
+	}
+
+	err = os.Chmod(unixDomainSockPath, 0777)
+	if err != nil {
+		listener.Close()
+		return nil, false, fmt.Errorf("unix domain sock chmod error: %w", err)
+	}
+
+	return listener, true, nil
+}
+
+type JSONSerializer struct{}
+
+func (j *JSONSerializer) Serialize(c echo.Context, i interface{}, indent string) error {
+	enc := json.NewEncoder(c.Response())
+	return enc.Encode(i)
+}
+
+func (j *JSONSerializer) Deserialize(c echo.Context, i interface{}) error {
+	err := json.NewDecoder(c.Request().Body).Decode(i)
+	if ute, ok := err.(*json.UnmarshalTypeError); ok {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Unmarshal type error: expected=%v, got=%v, field=%v, offset=%v", ute.Type, ute.Value, ute.Field, ute.Offset)).
+			SetInternal(err)
+	} else if se, ok := err.(*json.SyntaxError); ok {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Syntax error: offset=%v, error=%v", se.Offset, se.Error())).SetInternal(err)
+	}
+	return err
+}
+
 func main() {
 	e := echo.New()
 	// e.Debug = true
@@ -354,7 +398,7 @@ func main() {
 	//
 	// e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
-
+	e.JSONSerializer = &JSONSerializer{}
 	e.POST("/initialize", postInitialize)
 
 	e.POST("/api/auth", postAuthentication)
@@ -401,6 +445,15 @@ func main() {
 		go calculateTrendScheduled(time.Millisecond * 100)
 	}
 
+	listener, isUnixDomainSock, err := newUnixDomainSockListener()
+	if err != nil {
+		e.Logger.Fatalf("failed to create unix domain socket listener: %v", err)
+		return
+	}
+
+	if isUnixDomainSock {
+		e.Listener = listener
+	}
 	serverPort := fmt.Sprintf(":%v", getEnv("SERVER_APP_PORT", "3000"))
 	e.Logger.Fatal(e.Start(serverPort))
 }
