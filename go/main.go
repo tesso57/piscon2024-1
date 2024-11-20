@@ -52,9 +52,9 @@ var (
 	jiaJWTSigningKey *ecdsa.PublicKey
 
 	postIsuConditionTargetBaseURL string // JIAへのactivate時に登録する，ISUがconditionを送る先のURL
-	isuMap                        map[string]struct{}
+	isuMap                        map[string]*Isu
 	userMap                       map[string]struct{}
-	iconMap                       map[string][]byte
+	defaultIcon                   []byte
 )
 
 type Config struct {
@@ -175,6 +175,19 @@ type JIAServiceRequest struct {
 	TargetBaseURL string `json:"target_base_url"`
 	IsuUUID       string `json:"isu_uuid"`
 }
+
+func fetchIsu(jiaIsuUUID string) (*Isu, error) {
+	var isu Isu
+	err := db.Get(&isu, "SELECT * FROM `isu` WHERE `jia_isu_uuid` = ?", jiaIsuUUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, sql.ErrNoRows
+		}
+		return nil, err
+	}
+	return &isu, nil
+}
+
 type TrendCache struct {
 	res  []TrendResponse
 	Lock sync.Mutex
@@ -273,9 +286,13 @@ func init() {
 
 	insertQueue = NewQueue()
 	trendCache = NewTrendCache()
-	isuMap = make(map[string]struct{})
+	isuMap = make(map[string]*Isu)
 	userMap = make(map[string]struct{})
-	iconMap = make(map[string][]byte)
+
+	defaultIcon, err = os.ReadFile(defaultIconFilePath)
+	if err != nil {
+		log.Fatalf("failed to read file: %v", err)
+	}
 }
 
 func main() {
@@ -453,7 +470,7 @@ func postInitialize(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 	for _, isu := range isu {
-		isuMap[isu.JIAIsuUUID] = struct{}{}
+		isuMap[isu.JIAIsuUUID] = &isu
 	}
 
 	users := []string{}
@@ -709,11 +726,7 @@ func postIsu(c echo.Context) error {
 	var image []byte
 
 	if useDefaultImage {
-		image, err = os.ReadFile(defaultIconFilePath)
-		if err != nil {
-			c.Logger().Error(err)
-			return c.NoContent(http.StatusInternalServerError)
-		}
+		image = defaultIcon
 	} else {
 		file, err := fh.Open()
 		if err != nil {
@@ -749,7 +762,6 @@ func postIsu(c echo.Context) error {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
-	isuMap[jiaIsuUUID] = struct{}{}
 
 	targetURL := getJIAServiceURL(tx) + "/api/activate"
 	body := JIAServiceRequest{postIsuConditionTargetBaseURL, jiaIsuUUID}
@@ -817,6 +829,8 @@ func postIsu(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
+	delete(isuMap, jiaIsuUUID)
+
 	return c.JSON(http.StatusCreated, isu)
 }
 
@@ -835,19 +849,35 @@ func getIsuID(c echo.Context) error {
 
 	jiaIsuUUID := c.Param("jia_isu_uuid")
 
-	var res Isu
-	err = db.Get(&res, "SELECT * FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
-		jiaUserID, jiaIsuUUID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return c.String(http.StatusNotFound, "not found: isu")
-		}
+	// var res Isu
+	// err = db.Get(&res, "SELECT * FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
+	// 	jiaUserID, jiaIsuUUID)
+	// if err != nil {
+	// 	if errors.Is(err, sql.ErrNoRows) {
+	// 		return c.String(http.StatusNotFound, "not found: isu")
+	// 	}
+	//
+	// 	c.Logger().Errorf("db error: %v", err)
+	// 	return c.NoContent(http.StatusInternalServerError)
+	// }
 
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
+	isu, ok := isuMap[jiaIsuUUID]
+	if !ok {
+		isu, err = fetchIsu(jiaIsuUUID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return c.String(http.StatusNotFound, "not found: isu")
+			}
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+		isuMap[jiaIsuUUID] = isu
 	}
 
-	return c.JSON(http.StatusOK, res)
+	if isu.JIAUserID != jiaUserID {
+		return c.String(http.StatusNotFound, "not found: isu")
+	}
+	return c.JSON(http.StatusOK, isu)
 }
 
 // GET /api/isu/:jia_isu_uuid/icon
@@ -865,28 +895,25 @@ func getIsuIcon(c echo.Context) error {
 
 	jiaIsuUUID := c.Param("jia_isu_uuid")
 
-	image, ok := iconMap[fmt.Sprintf("%s:%s", jiaIsuUUID, jiaUserID)]
+	isu, ok := isuMap[jiaIsuUUID]
 	if !ok {
-		var img []byte
-		err = db.Get(
-			&img,
-			"SELECT `image` FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
-			jiaUserID,
-			jiaIsuUUID,
-		)
+		isu, err = fetchIsu(jiaIsuUUID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return c.String(http.StatusNotFound, "not found: isu")
 			}
 
-			c.Logger().Errorf("db error: %v", err)
+			c.Logger().Error(err)
 			return c.NoContent(http.StatusInternalServerError)
 		}
-		iconMap[fmt.Sprintf("%s:%s", jiaIsuUUID, jiaUserID)] = img
-		image = img
+		isuMap[jiaIsuUUID] = isu
 	}
 
-	return c.Blob(http.StatusOK, "", image)
+	if isu.JIAUserID != jiaUserID {
+		return c.String(http.StatusNotFound, "not found: isu")
+	}
+
+	return c.Blob(http.StatusOK, "", isu.Image)
 }
 
 // GET /api/isu/:jia_isu_uuid/graph
@@ -1430,7 +1457,15 @@ func postIsuCondition(c echo.Context) error {
 	// 	return c.NoContent(http.StatusInternalServerError)
 	// }
 	if _, ok := isuMap[jiaIsuUUID]; !ok {
-		return c.String(http.StatusNotFound, "not found: isu")
+		isu, err := fetchIsu(jiaIsuUUID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return c.String(http.StatusNotFound, "not found: isu")
+			}
+			c.Logger().Error(err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+		isuMap[jiaIsuUUID] = isu
 	}
 	// if count == 0 {
 	// 	return c.String(http.StatusNotFound, "not found: isu")
