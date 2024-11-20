@@ -319,8 +319,8 @@ func main() {
 		e.Logger.Fatalf("failed to connect db: %v", err)
 		return
 	}
-	db.SetMaxOpenConns(1024)
-	db.SetMaxIdleConns(1024)
+	db.SetMaxOpenConns(512)
+	db.SetMaxIdleConns(512)
 	defer db.Close()
 
 	postIsuConditionTargetBaseURL = os.Getenv("POST_ISUCONDITION_TARGET_BASE_URL")
@@ -815,7 +815,6 @@ func postIsu(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	c.Logger().Errorf("failed to request to JIAService: %v", err)
 	return c.JSON(http.StatusCreated, isu)
 }
 
