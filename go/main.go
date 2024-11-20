@@ -948,46 +948,60 @@ func getIsuGraph(c echo.Context) error {
 	}
 	date := time.Unix(datetimeInt64, 0).Truncate(time.Hour)
 
-	tx, err := db.Beginx()
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-	defer tx.Rollback()
+	// tx, err := db.Beginx()
+	// if err != nil {
+	// 	c.Logger().Errorf("db error: %v", err)
+	// 	return c.NoContent(http.StatusInternalServerError)
+	// }
+	// defer tx.Rollback()
 
-	var count int
-	err = tx.Get(
-		&count,
-		"SELECT COUNT(*) FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
-		jiaUserID,
-		jiaIsuUUID,
-	)
+	// var count int
+	// err = tx.Get(
+	// 	&count,
+	// 	"SELECT COUNT(*) FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
+	// 	jiaUserID,
+	// 	jiaIsuUUID,
+	// )
+	// if err != nil {
+	// 	c.Logger().Errorf("db error: %v", err)
+	// 	return c.NoContent(http.StatusInternalServerError)
+	// }
+	// if count == 0 {
+	// 	return c.String(http.StatusNotFound, "not found: isu")
+	// }
+
+	isu, err := isuCache.Get(jiaIsuUUID)
 	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
+		if errors.Is(err, sql.ErrNoRows) {
+			return c.String(http.StatusNotFound, "not found: isu")
+		}
+
+		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
-	if count == 0 {
+
+	if isu.JIAUserID != jiaUserID {
 		return c.String(http.StatusNotFound, "not found: isu")
 	}
 
-	res, err := generateIsuGraphResponse(tx, jiaIsuUUID, date)
+	res, err := generateIsuGraphResponse(jiaIsuUUID, date)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	err = tx.Commit()
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-
+	// err = tx.Commit()
+	// if err != nil {
+	// 	c.Logger().Errorf("db error: %v", err)
+	// 	return c.NoContent(http.StatusInternalServerError)
+	// }
+	//
 	return c.JSON(http.StatusOK, res)
 }
 
 // グラフのデータ点を一日分生成
 func generateIsuGraphResponse(
-	tx *sqlx.Tx,
+	// tx *sqlx.Tx,
 	jiaIsuUUID string,
 	graphDate time.Time,
 ) ([]GraphResponse, error) {
@@ -997,7 +1011,7 @@ func generateIsuGraphResponse(
 	var startTimeInThisHour time.Time
 	var condition IsuCondition
 
-	rows, err := tx.Queryx(
+	rows, err := db.Queryx(
 		"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? AND ? <= timestamp AND timestamp < ? ORDER BY `timestamp` ASC",
 		jiaIsuUUID,
 		graphDate,
