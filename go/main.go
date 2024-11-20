@@ -454,7 +454,7 @@ func main() {
 		go calculateTrendScheduled(time.Millisecond * 100)
 	}
 
-	serverPort := fmt.Sprintf(":%v", getEnv("SERVER_APP_PORT", "3000"))
+	// serverPort := fmt.Sprintf(":%v", getEnv("SERVER_APP_PORT", "3000"))
 	e.Logger.Fatal(e.StartServer(e.Server))
 }
 
