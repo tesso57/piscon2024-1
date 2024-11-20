@@ -398,7 +398,7 @@ func main() {
 	//
 	// e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
-	// e.JSONSerializer = &JSONSerializer{}
+	e.JSONSerializer = &JSONSerializer{}
 	e.POST("/initialize", postInitialize)
 
 	e.POST("/api/auth", postAuthentication)
@@ -615,6 +615,7 @@ func postAuthentication(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
+	fmt.Printf("session %+v", session)
 	session.Values["jia_user_id"] = jiaUserID
 	err = session.Save(c.Request(), c.Response())
 	if err != nil {
