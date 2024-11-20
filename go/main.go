@@ -54,6 +54,7 @@ var (
 	postIsuConditionTargetBaseURL string // JIAへのactivate時に登録する，ISUがconditionを送る先のURL
 	isuMap                        map[string]struct{}
 	userMap                       map[string]struct{}
+	iconMap                       map[string][]byte
 )
 
 type Config struct {
@@ -274,6 +275,7 @@ func init() {
 	trendCache = NewTrendCache()
 	isuMap = make(map[string]struct{})
 	userMap = make(map[string]struct{})
+	iconMap = make(map[string][]byte)
 }
 
 func main() {
@@ -590,13 +592,13 @@ func getIsuList(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	tx, err := db.Beginx()
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-	defer tx.Rollback()
-
+	// tx, err := db.Beginx()
+	// if err != nil {
+	// 	c.Logger().Errorf("db error: %v", err)
+	// 	return c.NoContent(http.StatusInternalServerError)
+	// }
+	// defer tx.Rollback()
+	//
 	stmt := `
 	SELECT 
 		i.id AS isu_id,
@@ -638,7 +640,7 @@ func getIsuList(c echo.Context) error {
 
 	isuList := []IsuWithCondition{}
 
-	err = tx.Select(&isuList, stmt, jiaUserID)
+	err = db.Select(&isuList, stmt, jiaUserID)
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -670,11 +672,11 @@ func getIsuList(c echo.Context) error {
 		responseList = append(responseList, res)
 	}
 
-	err = tx.Commit()
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
+	// err = tx.Commit()
+	// if err != nil {
+	// 	c.Logger().Errorf("db error: %v", err)
+	// 	return c.NoContent(http.StatusInternalServerError)
+	// }
 
 	return c.JSON(http.StatusOK, responseList)
 }
@@ -864,15 +866,24 @@ func getIsuIcon(c echo.Context) error {
 	jiaIsuUUID := c.Param("jia_isu_uuid")
 
 	var image []byte
-	err = db.Get(&image, "SELECT `image` FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
-		jiaUserID, jiaIsuUUID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return c.String(http.StatusNotFound, "not found: isu")
-		}
+	if _, ok := iconMap[jiaIsuUUID]; !ok {
+		err = db.Get(
+			&image,
+			"SELECT `image` FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
+			jiaUserID,
+			jiaIsuUUID,
+		)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return c.String(http.StatusNotFound, "not found: isu")
+			}
 
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
+			c.Logger().Errorf("db error: %v", err)
+			return c.NoContent(http.StatusInternalServerError)
+		}
+		iconMap[jiaIsuUUID] = image
+	} else {
+		image = iconMap[jiaIsuUUID]
 	}
 
 	return c.Blob(http.StatusOK, "", image)
