@@ -450,7 +450,7 @@ func main() {
 		if isUnixDomainSock {
 			e.Listener = listener
 		}
-	} else {
+		// } else {
 		go calculateTrendScheduled(time.Millisecond * 100)
 	}
 
