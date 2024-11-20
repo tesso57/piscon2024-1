@@ -645,6 +645,9 @@ func postSignout(c echo.Context) error {
 	}
 
 	sess.Options = &sessions.Options{MaxAge: -1, Path: "/"}
+	sess.Options.Secure = false
+	sess.Options.HttpOnly = true
+	sess.Options.SameSite = http.SameSiteLaxMode
 	err = sess.Save(c.Request(), c.Response())
 	if err != nil {
 		c.Logger().Error(err)
