@@ -368,23 +368,24 @@ func newUnixDomainSockListener() (net.Listener, bool, error) {
 	return listener, true, nil
 }
 
-// type JSONSerializer struct{}
-//
-//	func (j *JSONSerializer) Serialize(c echo.Context, i interface{}, indent string) error {
-//		enc := json.NewEncoder(c.Response())
-//		return enc.Encode(i)
-//	}
-//
-//	func (j *JSONSerializer) Deserialize(c echo.Context, i interface{}) error {
-//		err := json.NewDecoder(c.Request().Body).Decode(i)
-//		if ute, ok := err.(*json.UnmarshalTypeError); ok {
-//			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Unmarshal type error: expected=%v, got=%v, field=%v, offset=%v", ute.Type, ute.Value, ute.Field, ute.Offset)).
-//				SetInternal(err)
-//		} else if se, ok := err.(*json.SyntaxError); ok {
-//			return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Syntax error: offset=%v, error=%v", se.Offset, se.Error())).SetInternal(err)
-//		}
-//		return err
-//	}
+type JSONSerializer struct{}
+
+func (j *JSONSerializer) Serialize(c echo.Context, i interface{}, indent string) error {
+	enc := json.NewEncoder(c.Response())
+	return enc.Encode(i)
+}
+
+func (j *JSONSerializer) Deserialize(c echo.Context, i interface{}) error {
+	err := json.NewDecoder(c.Request().Body).Decode(i)
+	if ute, ok := err.(*json.UnmarshalTypeError); ok {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Unmarshal type error: expected=%v, got=%v, field=%v, offset=%v", ute.Type, ute.Value, ute.Field, ute.Offset)).
+			SetInternal(err)
+	} else if se, ok := err.(*json.SyntaxError); ok {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Syntax error: offset=%v, error=%v", se.Offset, se.Error())).SetInternal(err)
+	}
+	return err
+}
+
 func main() {
 	e := echo.New()
 	// e.Debug = true
@@ -397,7 +398,7 @@ func main() {
 	//
 	// e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
-	// e.JSONSerializer = &JSONSerializer{}
+	e.JSONSerializer = &JSONSerializer{}
 	e.POST("/initialize", postInitialize)
 
 	e.POST("/api/auth", postAuthentication)
@@ -440,15 +441,15 @@ func main() {
 
 	if os.Getenv("SRVNO") == "1" {
 		go insertIsuConditionScheduled(time.Millisecond * 100)
-		// listener, isUnixDomainSock, err := newUnixDomainSockListener()
-		// if err != nil {
-		// 	e.Logger.Fatalf("failed to create unix domain socket listener: %v", err)
-		// 	return
-		// }
-		//
-		// if isUnixDomainSock {
-		// 	e.Listener = listener
-		// }
+		listener, isUnixDomainSock, err := newUnixDomainSockListener()
+		if err != nil {
+			e.Logger.Fatalf("failed to create unix domain socket listener: %v", err)
+			return
+		}
+
+		if isUnixDomainSock {
+			e.Listener = listener
+		}
 		// } else {
 		go calculateTrendScheduled(time.Millisecond * 100)
 	}
@@ -471,6 +472,7 @@ func getUserIDFromSession(c echo.Context) (string, int, error) {
 		c.Logger().Error(err)
 		return "", http.StatusInternalServerError, fmt.Errorf("failed to get session: %v", err)
 	}
+	fmt.Printf("session %+v", session)
 	_jiaUserID, ok := session.Values["jia_user_id"]
 	if !ok {
 		c.Logger().Errorf("no session")
