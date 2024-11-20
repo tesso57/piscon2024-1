@@ -480,8 +480,10 @@ func getUserIDFromSession(c echo.Context) (string, int, error) {
 
 	if _, err := userCache.Get(jiaUserID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			c.Logger().Errorf("not found: user")
 			return "", http.StatusUnauthorized, fmt.Errorf("not found: user")
 		}
+		c.Logger().Errorf("db error: %v", err)
 		return "", http.StatusInternalServerError, fmt.Errorf("db error: %v", err)
 	}
 
