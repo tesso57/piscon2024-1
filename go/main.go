@@ -865,8 +865,8 @@ func getIsuIcon(c echo.Context) error {
 
 	jiaIsuUUID := c.Param("jia_isu_uuid")
 
-	var image []byte
-	if _, ok := iconMap[jiaIsuUUID]; !ok {
+	image, ok := iconMap[fmt.Sprintf("%s:%s", jiaIsuUUID, jiaUserID)]
+	if !ok {
 		err = db.Get(
 			&image,
 			"SELECT `image` FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
@@ -882,8 +882,6 @@ func getIsuIcon(c echo.Context) error {
 			return c.NoContent(http.StatusInternalServerError)
 		}
 		iconMap[jiaIsuUUID] = image
-	} else {
-		image = iconMap[jiaIsuUUID]
 	}
 
 	return c.Blob(http.StatusOK, "", image)
