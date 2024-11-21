@@ -67,24 +67,24 @@ type Config struct {
 }
 
 type Isu struct {
-	ID         int    `db:"id"           sonic:"id"`
-	JIAIsuUUID string `db:"jia_isu_uuid" sonic:"jia_isu_uuid"`
-	Name       string `db:"name"         sonic:"name"`
-	Image      []byte `db:"image"        sonic:"-"`
-	Character  string `db:"character"    sonic:"character"`
-	JIAUserID  string `db:"jia_user_id"  sonic:"-"`
+	ID         int    `db:"id"           json:"id"`
+	JIAIsuUUID string `db:"jia_isu_uuid" json:"jia_isu_uuid"`
+	Name       string `db:"name"         json:"name"`
+	Image      []byte `db:"image"        json:"-"`
+	Character  string `db:"character"    json:"character"`
+	JIAUserID  string `db:"jia_user_id"  json:"-"`
 }
 
 type IsuFromJIA struct {
-	Character string `sonic:"character"`
+	Character string `json:"character"`
 }
 
 type GetIsuListResponse struct {
-	ID                 int                      `sonic:"id"`
-	JIAIsuUUID         string                   `sonic:"jia_isu_uuid"`
-	Name               string                   `sonic:"name"`
-	Character          string                   `sonic:"character"`
-	LatestIsuCondition *GetIsuConditionResponse `sonic:"latest_isu_condition"`
+	ID                 int                      `json:"id"`
+	JIAIsuUUID         string                   `json:"jia_isu_uuid"`
+	Name               string                   `json:"name"`
+	Character          string                   `json:"character"`
+	LatestIsuCondition *GetIsuConditionResponse `json:"latest_isu_condition"`
 }
 
 type IsuCondition struct {
@@ -106,34 +106,34 @@ type MySQLConnectionEnv struct {
 }
 
 type InitializeRequest struct {
-	JIAServiceURL string `sonic:"jia_service_url"`
+	JIAServiceURL string `json:"jia_service_url"`
 }
 
 type InitializeResponse struct {
-	Language string `sonic:"language"`
+	Language string `json:"language"`
 }
 
 type GetMeResponse struct {
-	JIAUserID string `sonic:"jia_user_id"`
+	JIAUserID string `json:"jia_user_id"`
 }
 
 type GraphResponse struct {
-	StartAt             int64           `sonic:"start_at"`
-	EndAt               int64           `sonic:"end_at"`
-	Data                *GraphDataPoint `sonic:"data"`
-	ConditionTimestamps []int64         `sonic:"condition_timestamps"`
+	StartAt             int64           `json:"start_at"`
+	EndAt               int64           `json:"end_at"`
+	Data                *GraphDataPoint `json:"data"`
+	ConditionTimestamps []int64         `json:"condition_timestamps"`
 }
 
 type GraphDataPoint struct {
-	Score      int                  `sonic:"score"`
-	Percentage ConditionsPercentage `sonic:"percentage"`
+	Score      int                  `json:"score"`
+	Percentage ConditionsPercentage `json:"percentage"`
 }
 
 type ConditionsPercentage struct {
-	Sitting      int `sonic:"sitting"`
-	IsBroken     int `sonic:"is_broken"`
-	IsDirty      int `sonic:"is_dirty"`
-	IsOverweight int `sonic:"is_overweight"`
+	Sitting      int `json:"sitting"`
+	IsBroken     int `json:"is_broken"`
+	IsDirty      int `json:"is_dirty"`
+	IsOverweight int `json:"is_overweight"`
 }
 
 type GraphDataPointWithInfo struct {
@@ -144,37 +144,37 @@ type GraphDataPointWithInfo struct {
 }
 
 type GetIsuConditionResponse struct {
-	JIAIsuUUID     string `sonic:"jia_isu_uuid"`
-	IsuName        string `sonic:"isu_name"`
-	Timestamp      int64  `sonic:"timestamp"`
-	IsSitting      bool   `sonic:"is_sitting"`
-	Condition      string `sonic:"condition"`
-	ConditionLevel string `sonic:"condition_level"`
-	Message        string `sonic:"message"`
+	JIAIsuUUID     string `json:"jia_isu_uuid"`
+	IsuName        string `json:"isu_name"`
+	Timestamp      int64  `json:"timestamp"`
+	IsSitting      bool   `json:"is_sitting"`
+	Condition      string `json:"condition"`
+	ConditionLevel string `json:"condition_level"`
+	Message        string `json:"message"`
 }
 
 type TrendResponse struct {
-	Character string            `sonic:"character"`
-	Info      []*TrendCondition `sonic:"info"`
-	Warning   []*TrendCondition `sonic:"warning"`
-	Critical  []*TrendCondition `sonic:"critical"`
+	Character string            `json:"character"`
+	Info      []*TrendCondition `json:"info"`
+	Warning   []*TrendCondition `json:"warning"`
+	Critical  []*TrendCondition `json:"critical"`
 }
 
 type TrendCondition struct {
-	ID        int   `sonic:"isu_id"`
-	Timestamp int64 `sonic:"timestamp"`
+	ID        int   `json:"isu_id"`
+	Timestamp int64 `json:"timestamp"`
 }
 
 type PostIsuConditionRequest struct {
-	IsSitting bool   `sonic:"is_sitting"`
-	Condition string `sonic:"condition"`
-	Message   string `sonic:"message"`
-	Timestamp int64  `sonic:"timestamp"`
+	IsSitting bool   `json:"is_sitting"`
+	Condition string `json:"condition"`
+	Message   string `json:"message"`
+	Timestamp int64  `json:"timestamp"`
 }
 
 type JIAServiceRequest struct {
-	TargetBaseURL string `sonic:"target_base_url"`
-	IsuUUID       string `sonic:"isu_uuid"`
+	TargetBaseURL string `json:"target_base_url"`
+	IsuUUID       string `json:"isu_uuid"`
 }
 
 type IsuConditionCache struct {
@@ -842,7 +842,7 @@ func postIsu(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	reqJIA.Header.Set("Content-Type", "application/sonic")
+	reqJIA.Header.Set("Content-Type", "application/json")
 	res, err := http.DefaultClient.Do(reqJIA)
 	if err != nil {
 		return c.NoContent(http.StatusInternalServerError)
@@ -1634,6 +1634,6 @@ func insertIsuConditionScheduled(interval time.Duration) {
 	}
 }
 
-func getIndex(c echo.Context) error {
-	return c.File(frontendContentsPath + "/index.html")
-}
+// func getIndex(c echo.Context) error {
+// 	return c.File(frontendContentsPath + "/index.html")
+// }
