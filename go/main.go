@@ -749,7 +749,7 @@ func getIsuList(c echo.Context) error {
 	}
 
 	responseList := make([]GetIsuListResponse, 0, len(isuList))
-	var found bool
+	found := true
 	for _, isu := range isuList {
 		lastCondition, err := isuConditionCache.Get(isu.JIAIsuUUID)
 		if err != nil {
@@ -762,7 +762,7 @@ func getIsuList(c echo.Context) error {
 		var formattedCondition *GetIsuConditionResponse
 		if found {
 			formattedCondition = &GetIsuConditionResponse{
-				JIAIsuUUID:     isu.JIAIsuUUID,
+				JIAIsuUUID:     lastCondition.JIAIsuUUID,
 				IsuName:        isu.Name,
 				Timestamp:      lastCondition.Timestamp.Unix(),
 				IsSitting:      lastCondition.IsSitting,
