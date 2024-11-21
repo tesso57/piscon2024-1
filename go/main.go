@@ -240,8 +240,6 @@ type TrendCache struct {
 }
 
 func (tc *TrendCache) Get() []TrendResponse {
-	tc.Lock.Lock()
-	defer tc.Lock.Unlock()
 	return tc.res
 }
 
@@ -1414,9 +1412,6 @@ func calculateConditionLevel(condition string) (string, error) {
 // ISUの性格毎の最新のコンディション情報
 func getTrend(c echo.Context) error {
 	res := trendCache.Get()
-	if len(res) == 0 {
-		return c.NoContent(http.StatusInternalServerError)
-	}
 	return c.JSON(http.StatusOK, res)
 }
 
@@ -1434,7 +1429,7 @@ func calculateTrend() []TrendResponse {
 		isuList := []Isu{}
 		err = db.Select(
 			&isuList,
-			"SELECT `id`,`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level`  FROM `isu` WHERE `character` = ?",
+			"SELECT `id`,`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level` FROM `isu` WHERE `character` = ?",
 			character.Character,
 		)
 		if err != nil {
