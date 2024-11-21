@@ -458,7 +458,6 @@ func main() {
 		if isUnixDomainSock {
 			e.Listener = listener
 		}
-		// } else {
 		go calculateTrendScheduled(time.Millisecond * 100)
 	}
 
@@ -1429,7 +1428,7 @@ func calculateTrend() []TrendResponse {
 		isuList := []Isu{}
 		err = db.Select(
 			&isuList,
-			"SELECT `id`,`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level` FROM `isu` WHERE `character` = ?",
+			"SELECT `id`, `jia_isu_uuid` FROM  WHERE `character` = ?",
 			character.Character,
 		)
 		if err != nil {
@@ -1445,7 +1444,7 @@ func calculateTrend() []TrendResponse {
 			conds := make([]IsuCondition, 0, 1024)
 			err = db.Select(
 				&conds,
-				"SELECT `id`,`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level` FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY timestamp DESC LIMIT 1",
+				"SELECT timestamp`, level` FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY timestamp DESC LIMIT 1",
 				isu.JIAIsuUUID,
 			)
 			if err != nil {
