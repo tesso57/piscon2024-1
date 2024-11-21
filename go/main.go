@@ -458,7 +458,7 @@ func main() {
 	}
 
 	if os.Getenv("SRVNO") == "1" {
-		go insertIsuConditionScheduled(time.Millisecond * 100)
+		go insertIsuConditionScheduled(time.Millisecond * 50)
 		listener, isUnixDomainSock, err := newUnixDomainSockListener()
 		if err != nil {
 			e.Logger.Fatalf("failed to create unix domain socket listener: %v", err)
@@ -468,7 +468,7 @@ func main() {
 		if isUnixDomainSock {
 			e.Listener = listener
 		}
-		go calculateTrendScheduled(time.Millisecond * 100)
+		go calculateTrendScheduled(time.Millisecond * 50)
 	}
 
 	serverPort := fmt.Sprintf(":%v", getEnv("SERVER_APP_PORT", "3000"))
