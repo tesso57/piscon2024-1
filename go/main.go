@@ -56,6 +56,7 @@ var (
 	postIsuConditionTargetBaseURL string // JIAへのactivate時に登録する，ISUがconditionを送る先のURL
 	isuCache                      *IsuCache
 	userCache                     *UserCache
+	isuConditionCache             *IsuConditionCache
 	defaultIcon                   []byte
 	unixDomainSockPath            = "/tmp/isucondition.sock"
 )
@@ -175,6 +176,41 @@ type JIAServiceRequest struct {
 	TargetBaseURL string `json:"target_base_url"`
 	IsuUUID       string `json:"isu_uuid"`
 }
+
+type IsuConditionCache struct {
+	cache map[string]*IsuCondition
+	Lock  sync.Mutex
+}
+
+func (cc *IsuConditionCache) Get(jiaIsuUUID string) (*IsuCondition, error) {
+	cc.Lock.Lock()
+	defer cc.Lock.Unlock()
+	cond, ok := cc.cache[jiaIsuUUID]
+	if !ok {
+		var i IsuCondition
+		err := db.Get(
+			&i,
+			"SELECT `id`, `jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level` FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY `timestamp` DESC LIMIT 1",
+			jiaIsuUUID,
+		)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, sql.ErrNoRows
+			}
+			return nil, err
+		}
+		cc.cache[jiaIsuUUID] = &i
+		return &i, nil
+	}
+	return cond, nil
+}
+
+func (cc *IsuConditionCache) Forget(jiaIsuUUID string) {
+	cc.Lock.Lock()
+	defer cc.Lock.Unlock()
+	delete(cc.cache, jiaIsuUUID)
+}
+
 type IsuCache struct {
 	cache map[string]*Isu
 	Lock  sync.Mutex
@@ -341,6 +377,9 @@ func init() {
 	}
 	userCache = &UserCache{
 		cache: make(map[string]struct{}),
+	}
+	isuConditionCache = &IsuConditionCache{
+		cache: make(map[string]*IsuCondition),
 	}
 
 	http.DefaultTransport.(*http.Transport).MaxIdleConns = 0                // infinite
@@ -698,46 +737,10 @@ func getIsuList(c echo.Context) error {
 	// }
 	// defer tx.Rollback()
 	//
-	stmt := `
-	SELECT 
-		i.id AS isu_id,
-		i.jia_isu_uuid AS isu_jia_isu_uuid,
-		i.name AS isu_name,
-		i.character AS isu_character,
-		c.id AS condition_id,
-		c.jia_isu_uuid AS condition_jia_isu_uuid,
-		c.timestamp AS condition_timestamp,
-		c.is_sitting AS condition_is_sitting,
-		c.condition AS condition_condition,
-		c.level AS condition_level,
-		c.message AS condition_message
-	FROM isu AS i
-	LEFT JOIN isu_condition AS c
-	ON c.id = (
-		SELECT c2.id
-		FROM isu_condition AS c2
-		WHERE c2.jia_isu_uuid = i.jia_isu_uuid
-		ORDER BY timestamp DESC LIMIT 1
-	)
-	WHERE i.jia_user_id = ?
-	ORDER BY i.id DESC
-	`
 
-	type IsuWithCondition struct {
-		ID                  int        `db:"isu_id"`
-		JIAIsuUUID          string     `db:"isu_jia_isu_uuid"`
-		Name                string     `db:"isu_name"`
-		Character           string     `db:"isu_character"`
-		ConditionID         *int       `db:"condition_id"`
-		ConditionJIAIsuUUID *string    `db:"condition_jia_isu_uuid"`
-		ConditionTimestamp  *time.Time `db:"condition_timestamp"`
-		IsSitting           *bool      `db:"condition_is_sitting"`
-		Condition           *string    `db:"condition_condition"`
-		ConditionLevel      *string    `db:"condition_level"`
-		Message             *string    `db:"condition_message"`
-	}
+	stmt := "SELECT `id`, `jia_isu_uuid`, `name`, `character`, `jia_user_id` FROM `isu` WHERE `jia_user_id` = ?"
 
-	isuList := []IsuWithCondition{}
+	isuList := []Isu{}
 
 	err = db.Select(&isuList, stmt, jiaUserID)
 	if err != nil {
@@ -746,18 +749,26 @@ func getIsuList(c echo.Context) error {
 	}
 
 	responseList := make([]GetIsuListResponse, 0, len(isuList))
-
+	var found bool
 	for _, isu := range isuList {
+		lastCondition, err := isuConditionCache.Get(isu.JIAIsuUUID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				found = false
+			} else {
+				return c.NoContent(http.StatusInternalServerError)
+			}
+		}
 		var formattedCondition *GetIsuConditionResponse
-		if isu.ConditionID != nil {
+		if found {
 			formattedCondition = &GetIsuConditionResponse{
-				JIAIsuUUID:     *isu.ConditionJIAIsuUUID,
+				JIAIsuUUID:     lastCondition.JIAIsuUUID,
 				IsuName:        isu.Name,
-				Timestamp:      (*isu.ConditionTimestamp).Unix(),
-				IsSitting:      *isu.IsSitting,
-				Condition:      *isu.Condition,
-				ConditionLevel: *isu.ConditionLevel,
-				Message:        *isu.Message,
+				Timestamp:      lastCondition.Timestamp.Unix(),
+				IsSitting:      lastCondition.IsSitting,
+				Condition:      lastCondition.Condition,
+				ConditionLevel: lastCondition.Level,
+				Message:        lastCondition.Message,
 			}
 		}
 
@@ -1441,38 +1452,34 @@ func calculateTrend() []TrendResponse {
 		characterCriticalIsuConditions := []*TrendCondition{}
 
 		for _, isu := range isuList {
-			conds := make([]IsuCondition, 0, 1024)
-			err = db.Select(
-				&conds,
-				"SELECT `timestamp`,`level` FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY `timestamp` DESC LIMIT 1",
-				isu.JIAIsuUUID,
-			)
+			cond, err := isuConditionCache.Get(isu.JIAIsuUUID)
 			if err != nil {
-				log.Errorf("db error: %v", err)
-				return nil
+				if errors.Is(err, sql.ErrNoRows) {
+					continue
+				} else {
+					log.Errorf("db error: %v", err)
+					return nil
+				}
 			}
-			if len(conds) > 0 {
-				cond := conds[0]
 
-				conditionLevel := cond.Level
-				trendCondition := TrendCondition{
-					ID:        isu.ID,
-					Timestamp: cond.Timestamp.Unix(),
-				}
-				switch conditionLevel {
-				case "info":
-					characterInfoIsuConditions = append(characterInfoIsuConditions, &trendCondition)
-				case "warning":
-					characterWarningIsuConditions = append(
-						characterWarningIsuConditions,
-						&trendCondition,
-					)
-				case "critical":
-					characterCriticalIsuConditions = append(
-						characterCriticalIsuConditions,
-						&trendCondition,
-					)
-				}
+			conditionLevel := cond.Level
+			trendCondition := TrendCondition{
+				ID:        isu.ID,
+				Timestamp: cond.Timestamp.Unix(),
+			}
+			switch conditionLevel {
+			case "info":
+				characterInfoIsuConditions = append(characterInfoIsuConditions, &trendCondition)
+			case "warning":
+				characterWarningIsuConditions = append(
+					characterWarningIsuConditions,
+					&trendCondition,
+				)
+			case "critical":
+				characterCriticalIsuConditions = append(
+					characterCriticalIsuConditions,
+					&trendCondition,
+				)
 			}
 		}
 
@@ -1640,6 +1647,10 @@ func insertIsuConditionScheduled(interval time.Duration) {
 			q := insertQueue.PopAll()
 			if len(q) == 0 {
 				continue
+			}
+
+			for _, cond := range q {
+				isuConditionCache.Forget(cond.JIAIsuUUID)
 			}
 			_, err := db.NamedExec("INSERT INTO `isu_condition`"+
 				"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level`)"+
