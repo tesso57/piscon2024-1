@@ -190,7 +190,7 @@ func (cc *IsuConditionCache) Get(jiaIsuUUID string) (*IsuCondition, error) {
 		var i IsuCondition
 		err := db.Get(
 			&i,
-			"SELECT `id`, `jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level` FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY `timestamp` DESC LIMIT 1",
+			"SELECT  `jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level` FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY `timestamp` DESC LIMIT 1",
 			jiaIsuUUID,
 		)
 		if err != nil {
@@ -342,7 +342,7 @@ func NewMySQLConnectionEnv() *MySQLConnectionEnv {
 
 func (mc *MySQLConnectionEnv) ConnectDB() (*sqlx.DB, error) {
 	dsn := fmt.Sprintf(
-		"%v:%v@tcp(%v:%v)/%v?parseTime=true&loc=Asia%%2FTokyo&interpolateParams=true",
+		"%v:%v@tcp(%v:%v)/%v?parseTime=true&loc=Asia%%2FTokyo&interpolateParams=true&maxAllowedPacket=0",
 		mc.User,
 		mc.Password,
 		mc.Host,
@@ -476,8 +476,8 @@ func main() {
 		e.Logger.Fatalf("failed to connect db: %v", err)
 		return
 	}
-	db.SetMaxOpenConns(256)
-	db.SetMaxIdleConns(256)
+	db.SetMaxOpenConns(512)
+	db.SetMaxIdleConns(512)
 	defer db.Close()
 
 	postIsuConditionTargetBaseURL = os.Getenv("POST_ISUCONDITION_TARGET_BASE_URL")
@@ -577,7 +577,7 @@ func postInitialize(c echo.Context) error {
 	conds := []IsuCondition{}
 	err = db.Select(
 		&conds,
-		"SELECT `id`,`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level` FROM `isu_condition`",
+		"SELECT `jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level` FROM `isu_condition`",
 	)
 	if err != nil {
 		c.Logger().Errorf("db error : %v", err)
@@ -910,7 +910,7 @@ func postIsu(c echo.Context) error {
 	var isu Isu
 	err = tx.Get(
 		&isu,
-		"SELECT `id`, `jia_isu_uuid`, `name`, `character`, `jia_user_id`FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
+		"SELECT `id`, `jia_isu_uuid`, `name`, `character`, `jia_user_id` FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
 		jiaUserID,
 		jiaIsuUUID,
 	)
@@ -1091,7 +1091,7 @@ func generateIsuGraphResponse(
 	var condition IsuCondition
 
 	rows, err := db.Queryx(
-		"SELECT `id`,`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level` FROM `isu_condition` WHERE `jia_isu_uuid` = ? AND ? <= timestamp AND timestamp < ? ORDER BY `timestamp` ASC",
+		"SELECT jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level` FROM `isu_condition` WHERE `jia_isu_uuid` = ? AND ? <= timestamp AND timestamp < ? ORDER BY `timestamp` ASC",
 		jiaIsuUUID,
 		graphDate,
 		graphDate.Add(time.Hour*24),
@@ -1340,7 +1340,7 @@ func getIsuConditionsFromDB(
 	levels := maps.Keys(conditionLevel)
 	if startTime.IsZero() {
 		q, args, err := sqlx.In(
-			"SELECT `id`,`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level`  FROM `isu_condition` WHERE `jia_isu_uuid` = ?"+
+			"SELECT `jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level`  FROM `isu_condition` WHERE `jia_isu_uuid` = ?"+
 				"	AND `timestamp` < ?"+
 				"	AND `level` IN (?) "+
 				"	ORDER BY `timestamp` DESC "+
@@ -1360,7 +1360,7 @@ func getIsuConditionsFromDB(
 		}
 	} else {
 		q, args, err := sqlx.In(
-			"SELECT `id`,`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level`  FROM `isu_condition` WHERE `jia_isu_uuid` = ?"+
+			"SELECT jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level`  FROM `isu_condition` WHERE `jia_isu_uuid` = ?"+
 				"	AND `timestamp` < ?"+
 				"	AND ? <= `timestamp`"+
 				"	AND `level` IN (?) "+
