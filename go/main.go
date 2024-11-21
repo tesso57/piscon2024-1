@@ -738,7 +738,7 @@ func getIsuList(c echo.Context) error {
 	// defer tx.Rollback()
 	//
 
-	stmt := "SELECT `id`, `jia_isu_uuid`, `name`, `character`, `jia_user_id` FROM `isu` WHERE `jia_user_id` = ?"
+	stmt := "SELECT `id`, `jia_isu_uuid`, `name`, `character` FROM `isu` WHERE `jia_user_id` = ? ORDER BY `id` DESC"
 
 	isuList := []Isu{}
 
@@ -762,7 +762,7 @@ func getIsuList(c echo.Context) error {
 		var formattedCondition *GetIsuConditionResponse
 		if found {
 			formattedCondition = &GetIsuConditionResponse{
-				JIAIsuUUID:     lastCondition.JIAIsuUUID,
+				JIAIsuUUID:     isu.JIAIsuUUID,
 				IsuName:        isu.Name,
 				Timestamp:      lastCondition.Timestamp.Unix(),
 				IsSitting:      lastCondition.IsSitting,
