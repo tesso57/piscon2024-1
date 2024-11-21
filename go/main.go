@@ -1444,7 +1444,7 @@ func calculateTrend() []TrendResponse {
 			conds := make([]IsuCondition, 0, 1024)
 			err = db.Select(
 				&conds,
-				"SELECT timestamp`, level` FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY timestamp DESC LIMIT 1",
+				"SELECT `timestamp`,`level` FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY `timestamp` DESC LIMIT 1",
 				isu.JIAIsuUUID,
 			)
 			if err != nil {
