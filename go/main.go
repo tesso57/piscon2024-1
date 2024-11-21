@@ -1428,7 +1428,7 @@ func calculateTrend() []TrendResponse {
 		isuList := []Isu{}
 		err = db.Select(
 			&isuList,
-			"SELECT `id`, `jia_isu_uuid` FROM  WHERE `character` = ?",
+			"SELECT `id`, `jia_isu_uuid` FROM `isu` WHERE `character` = ?",
 			character.Character,
 		)
 		if err != nil {
