@@ -66,14 +66,12 @@ type Config struct {
 }
 
 type Isu struct {
-	ID         int       `db:"id"           json:"id"`
-	JIAIsuUUID string    `db:"jia_isu_uuid" json:"jia_isu_uuid"`
-	Name       string    `db:"name"         json:"name"`
-	Image      []byte    `db:"image"        json:"-"`
-	Character  string    `db:"character"    json:"character"`
-	JIAUserID  string    `db:"jia_user_id"  json:"-"`
-	CreatedAt  time.Time `db:"created_at"   json:"-"`
-	UpdatedAt  time.Time `db:"updated_at"   json:"-"`
+	ID         int    `db:"id"           json:"id"`
+	JIAIsuUUID string `db:"jia_isu_uuid" json:"jia_isu_uuid"`
+	Name       string `db:"name"         json:"name"`
+	Image      []byte `db:"image"        json:"-"`
+	Character  string `db:"character"    json:"character"`
+	JIAUserID  string `db:"jia_user_id"  json:"-"`
 }
 
 type IsuFromJIA struct {
@@ -96,7 +94,6 @@ type IsuCondition struct {
 	Condition  string    `db:"condition"`
 	Message    string    `db:"message"`
 	Level      string    `db:"level"`
-	CreatedAt  time.Time `db:"created_at"`
 }
 
 type MySQLConnectionEnv struct {
@@ -189,7 +186,11 @@ func (ic *IsuCache) Get(jiaIsuUUID string) (*Isu, error) {
 	isu, ok := ic.cache[jiaIsuUUID]
 	if !ok {
 		var i Isu
-		err := db.Get(&i, "SELECT * FROM `isu` WHERE `jia_isu_uuid` = ?", jiaIsuUUID)
+		err := db.Get(
+			&i,
+			"SELECT `id`, `jia_isu_uuid`, `name`, `image`, `character`, `jia_user_id` FROM `isu` WHERE `jia_isu_uuid` = ?",
+			jiaIsuUUID,
+		)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return nil, sql.ErrNoRows
@@ -219,7 +220,7 @@ func (uc *UserCache) Get(jiaUserID string) (bool, error) {
 	_, ok := uc.cache[jiaUserID]
 	if !ok {
 		var count int
-		err := db.Get(&count, "SELECT COUNT(*) FROM `user` WHERE `jia_user_id` = ?",
+		err := db.Get(&count, "SELECT 1 FROM `user` WHERE `jia_user_id` = ?",
 			jiaUserID)
 		if err != nil {
 			return false, fmt.Errorf("db error: %v", err)
@@ -343,6 +344,10 @@ func init() {
 	userCache = &UserCache{
 		cache: make(map[string]struct{}),
 	}
+
+	http.DefaultTransport.(*http.Transport).MaxIdleConns = 0                // infinite
+	http.DefaultTransport.(*http.Transport).MaxIdleConnsPerHost = 1024 * 16 // default: 2
+	// http.DefaultTransport.(*http.Transport).ForceAttemptHTTP2 = true        // go1.13以上
 }
 
 func newUnixDomainSockListener() (net.Listener, bool, error) {
@@ -434,8 +439,8 @@ func main() {
 		e.Logger.Fatalf("failed to connect db: %v", err)
 		return
 	}
-	db.SetMaxOpenConns(256)
-	db.SetMaxIdleConns(256)
+	db.SetMaxOpenConns(1024)
+	db.SetMaxIdleConns(1024)
 	defer db.Close()
 
 	postIsuConditionTargetBaseURL = os.Getenv("POST_ISUCONDITION_TARGET_BASE_URL")
@@ -893,8 +898,10 @@ func postIsu(c echo.Context) error {
 	var isu Isu
 	err = tx.Get(
 		&isu,
-		"SELECT * FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
-		jiaUserID, jiaIsuUUID)
+		"SELECT `id`, `jia_isu_uuid`, `name`, `character`, `jia_user_id`FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
+		jiaUserID,
+		jiaIsuUUID,
+	)
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -1072,7 +1079,7 @@ func generateIsuGraphResponse(
 	var condition IsuCondition
 
 	rows, err := db.Queryx(
-		"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? AND ? <= timestamp AND timestamp < ? ORDER BY `timestamp` ASC",
+		"SELECT `id`,`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level` FROM `isu_condition` WHERE `jia_isu_uuid` = ? AND ? <= timestamp AND timestamp < ? ORDER BY `timestamp` ASC",
 		jiaIsuUUID,
 		graphDate,
 		graphDate.Add(time.Hour*24),
@@ -1321,12 +1328,15 @@ func getIsuConditionsFromDB(
 	levels := maps.Keys(conditionLevel)
 	if startTime.IsZero() {
 		q, args, err := sqlx.In(
-			"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ?"+
+			"SELECT `id`,`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level`  FROM `isu_condition` WHERE `jia_isu_uuid` = ?"+
 				"	AND `timestamp` < ?"+
 				"	AND `level` IN (?) "+
 				"	ORDER BY `timestamp` DESC "+
 				"	LIMIT ?",
-			jiaIsuUUID, endTime, levels, limit,
+			jiaIsuUUID,
+			endTime,
+			levels,
+			limit,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("db error: %v", err)
@@ -1338,7 +1348,7 @@ func getIsuConditionsFromDB(
 		}
 	} else {
 		q, args, err := sqlx.In(
-			"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ?"+
+			"SELECT `id`,`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level`  FROM `isu_condition` WHERE `jia_isu_uuid` = ?"+
 				"	AND `timestamp` < ?"+
 				"	AND ? <= `timestamp`"+
 				"	AND `level` IN (?) "+
@@ -1419,8 +1429,9 @@ func calculateTrend() []TrendResponse {
 
 	for _, character := range characterList {
 		isuList := []Isu{}
-		err = db.Select(&isuList,
-			"SELECT * FROM `isu` WHERE `character` = ?",
+		err = db.Select(
+			&isuList,
+			"SELECT `id`,`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level`  FROM `isu` WHERE `character` = ?",
 			character.Character,
 		)
 		if err != nil {
@@ -1436,7 +1447,7 @@ func calculateTrend() []TrendResponse {
 			conds := make([]IsuCondition, 0, 1024)
 			err = db.Select(
 				&conds,
-				"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY timestamp DESC LIMIT 1",
+				"SELECT `id`,`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level` FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY timestamp DESC LIMIT 1",
 				isu.JIAIsuUUID,
 			)
 			if err != nil {
