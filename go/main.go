@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
+	"github.com/felixge/fgprof"
 	"github.com/go-sql-driver/mysql"
 	"github.com/goccy/go-json"
 	"github.com/gorilla/sessions"
@@ -457,6 +458,10 @@ func main() {
 	// e.GET("/register", getIndex)
 	// e.Static("/assets", frontendContentsPath+"/assets")
 
+	http.DefaultServeMux.Handle("/debug/fgprof", fgprof.Handler())
+	go func() {
+		fmt.Println(http.ListenAndServe(":6060", nil))
+	}()
 	mySQLConnectionData = NewMySQLConnectionEnv()
 
 	var err error
@@ -476,7 +481,7 @@ func main() {
 	}
 
 	if os.Getenv("SRVNO") == "1" {
-		go insertIsuConditionScheduled(time.Millisecond * 50)
+		go insertIsuConditionScheduled(time.Millisecond * 100)
 		listener, isUnixDomainSock, err := newUnixDomainSockListener()
 		if err != nil {
 			e.Logger.Fatalf("failed to create unix domain socket listener: %v", err)
@@ -486,7 +491,7 @@ func main() {
 		if isUnixDomainSock {
 			e.Listener = listener
 		}
-		go calculateTrendScheduled(time.Millisecond * 50)
+		go calculateTrendScheduled(time.Millisecond * 100)
 	}
 
 	serverPort := fmt.Sprintf(":%v", getEnv("SERVER_APP_PORT", "3000"))
