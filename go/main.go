@@ -1091,7 +1091,7 @@ func generateIsuGraphResponse(
 	var condition IsuCondition
 
 	rows, err := db.Queryx(
-		"SELECT jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level` FROM `isu_condition` WHERE `jia_isu_uuid` = ? AND ? <= timestamp AND timestamp < ? ORDER BY `timestamp` ASC",
+		"SELECT `jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level` FROM `isu_condition` WHERE `jia_isu_uuid` = ? AND ? <= timestamp AND timestamp < ? ORDER BY `timestamp` ASC",
 		jiaIsuUUID,
 		graphDate,
 		graphDate.Add(time.Hour*24),
