@@ -18,11 +18,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-sql-driver/mysql"
-	"github.com/goccy/go-json"
 	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
+	"github.com/karagenc/fj4echo"
 	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -48,7 +49,6 @@ const (
 
 var (
 	db                  *sqlx.DB
-	sessionStore        sessions.Store
 	mySQLConnectionData *MySQLConnectionEnv
 
 	jiaJWTSigningKey *ecdsa.PublicKey
@@ -67,24 +67,24 @@ type Config struct {
 }
 
 type Isu struct {
-	ID         int    `db:"id"           json:"id"`
-	JIAIsuUUID string `db:"jia_isu_uuid" json:"jia_isu_uuid"`
-	Name       string `db:"name"         json:"name"`
-	Image      []byte `db:"image"        json:"-"`
-	Character  string `db:"character"    json:"character"`
-	JIAUserID  string `db:"jia_user_id"  json:"-"`
+	ID         int    `db:"id"           sonic:"id"`
+	JIAIsuUUID string `db:"jia_isu_uuid" sonic:"jia_isu_uuid"`
+	Name       string `db:"name"         sonic:"name"`
+	Image      []byte `db:"image"        sonic:"-"`
+	Character  string `db:"character"    sonic:"character"`
+	JIAUserID  string `db:"jia_user_id"  sonic:"-"`
 }
 
 type IsuFromJIA struct {
-	Character string `json:"character"`
+	Character string `sonic:"character"`
 }
 
 type GetIsuListResponse struct {
-	ID                 int                      `json:"id"`
-	JIAIsuUUID         string                   `json:"jia_isu_uuid"`
-	Name               string                   `json:"name"`
-	Character          string                   `json:"character"`
-	LatestIsuCondition *GetIsuConditionResponse `json:"latest_isu_condition"`
+	ID                 int                      `sonic:"id"`
+	JIAIsuUUID         string                   `sonic:"jia_isu_uuid"`
+	Name               string                   `sonic:"name"`
+	Character          string                   `sonic:"character"`
+	LatestIsuCondition *GetIsuConditionResponse `sonic:"latest_isu_condition"`
 }
 
 type IsuCondition struct {
@@ -106,34 +106,34 @@ type MySQLConnectionEnv struct {
 }
 
 type InitializeRequest struct {
-	JIAServiceURL string `json:"jia_service_url"`
+	JIAServiceURL string `sonic:"jia_service_url"`
 }
 
 type InitializeResponse struct {
-	Language string `json:"language"`
+	Language string `sonic:"language"`
 }
 
 type GetMeResponse struct {
-	JIAUserID string `json:"jia_user_id"`
+	JIAUserID string `sonic:"jia_user_id"`
 }
 
 type GraphResponse struct {
-	StartAt             int64           `json:"start_at"`
-	EndAt               int64           `json:"end_at"`
-	Data                *GraphDataPoint `json:"data"`
-	ConditionTimestamps []int64         `json:"condition_timestamps"`
+	StartAt             int64           `sonic:"start_at"`
+	EndAt               int64           `sonic:"end_at"`
+	Data                *GraphDataPoint `sonic:"data"`
+	ConditionTimestamps []int64         `sonic:"condition_timestamps"`
 }
 
 type GraphDataPoint struct {
-	Score      int                  `json:"score"`
-	Percentage ConditionsPercentage `json:"percentage"`
+	Score      int                  `sonic:"score"`
+	Percentage ConditionsPercentage `sonic:"percentage"`
 }
 
 type ConditionsPercentage struct {
-	Sitting      int `json:"sitting"`
-	IsBroken     int `json:"is_broken"`
-	IsDirty      int `json:"is_dirty"`
-	IsOverweight int `json:"is_overweight"`
+	Sitting      int `sonic:"sitting"`
+	IsBroken     int `sonic:"is_broken"`
+	IsDirty      int `sonic:"is_dirty"`
+	IsOverweight int `sonic:"is_overweight"`
 }
 
 type GraphDataPointWithInfo struct {
@@ -144,37 +144,37 @@ type GraphDataPointWithInfo struct {
 }
 
 type GetIsuConditionResponse struct {
-	JIAIsuUUID     string `json:"jia_isu_uuid"`
-	IsuName        string `json:"isu_name"`
-	Timestamp      int64  `json:"timestamp"`
-	IsSitting      bool   `json:"is_sitting"`
-	Condition      string `json:"condition"`
-	ConditionLevel string `json:"condition_level"`
-	Message        string `json:"message"`
+	JIAIsuUUID     string `sonic:"jia_isu_uuid"`
+	IsuName        string `sonic:"isu_name"`
+	Timestamp      int64  `sonic:"timestamp"`
+	IsSitting      bool   `sonic:"is_sitting"`
+	Condition      string `sonic:"condition"`
+	ConditionLevel string `sonic:"condition_level"`
+	Message        string `sonic:"message"`
 }
 
 type TrendResponse struct {
-	Character string            `json:"character"`
-	Info      []*TrendCondition `json:"info"`
-	Warning   []*TrendCondition `json:"warning"`
-	Critical  []*TrendCondition `json:"critical"`
+	Character string            `sonic:"character"`
+	Info      []*TrendCondition `sonic:"info"`
+	Warning   []*TrendCondition `sonic:"warning"`
+	Critical  []*TrendCondition `sonic:"critical"`
 }
 
 type TrendCondition struct {
-	ID        int   `json:"isu_id"`
-	Timestamp int64 `json:"timestamp"`
+	ID        int   `sonic:"isu_id"`
+	Timestamp int64 `sonic:"timestamp"`
 }
 
 type PostIsuConditionRequest struct {
-	IsSitting bool   `json:"is_sitting"`
-	Condition string `json:"condition"`
-	Message   string `json:"message"`
-	Timestamp int64  `json:"timestamp"`
+	IsSitting bool   `sonic:"is_sitting"`
+	Condition string `sonic:"condition"`
+	Message   string `sonic:"message"`
+	Timestamp int64  `sonic:"timestamp"`
 }
 
 type JIAServiceRequest struct {
-	TargetBaseURL string `json:"target_base_url"`
-	IsuUUID       string `json:"isu_uuid"`
+	TargetBaseURL string `sonic:"target_base_url"`
+	IsuUUID       string `sonic:"isu_uuid"`
 }
 
 type IsuConditionCache struct {
@@ -353,8 +353,6 @@ func (mc *MySQLConnectionEnv) ConnectDB() (*sqlx.DB, error) {
 }
 
 func init() {
-	sessionStore = sessions.NewCookieStore([]byte(getEnv("SESSION_KEY", "isucondition")))
-
 	key, err := os.ReadFile(jiaJWTSigningKeyPath)
 	if err != nil {
 		log.Fatalf("failed to read file: %v", err)
@@ -411,37 +409,10 @@ func newUnixDomainSockListener() (net.Listener, bool, error) {
 	return listener, true, nil
 }
 
-type JSONSerializer struct{}
-
-func (j *JSONSerializer) Serialize(c echo.Context, i interface{}, indent string) error {
-	enc := json.NewEncoder(c.Response())
-	return enc.Encode(i)
-}
-
-func (j *JSONSerializer) Deserialize(c echo.Context, i interface{}) error {
-	err := json.NewDecoder(c.Request().Body).Decode(i)
-	if ute, ok := err.(*json.UnmarshalTypeError); ok {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Unmarshal type error: expected=%v, got=%v, field=%v, offset=%v", ute.Type, ute.Value, ute.Field, ute.Offset)).
-			SetInternal(err)
-	} else if se, ok := err.(*json.SyntaxError); ok {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Syntax error: offset=%v, error=%v", se.Offset, se.Error())).SetInternal(err)
-	}
-	return err
-}
-
 func main() {
 	e := echo.New()
-	// e.Debug = true
-	// e.Logger.SetLevel(log.DEBUG)
-
-	// http.DefaultServeMux.Handle("/debug/fgprof", fgprof.Handler())
-	// go func() {
-	// 	stdlog.Print(http.ListenAndServe(":6060", nil))
-	// }()
-	//
-	// e.Use(middleware.Logger())
+	e.JSONSerializer = fj4echo.New()
 	e.Use(middleware.Recover())
-	e.JSONSerializer = &JSONSerializer{}
 	e.POST("/initialize", postInitialize)
 
 	e.Use(
@@ -859,19 +830,19 @@ func postIsu(c echo.Context) error {
 
 	targetURL := getJIAServiceURL(tx) + "/api/activate"
 	body := JIAServiceRequest{postIsuConditionTargetBaseURL, jiaIsuUUID}
-	bodyJSON, err := json.Marshal(body)
+	bodysonic, err := sonic.Marshal(body)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	reqJIA, err := http.NewRequest(http.MethodPost, targetURL, bytes.NewBuffer(bodyJSON))
+	reqJIA, err := http.NewRequest(http.MethodPost, targetURL, bytes.NewBuffer(bodysonic))
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	reqJIA.Header.Set("Content-Type", "application/json")
+	reqJIA.Header.Set("Content-Type", "application/sonic")
 	res, err := http.DefaultClient.Do(reqJIA)
 	if err != nil {
 		return c.NoContent(http.StatusInternalServerError)
@@ -891,7 +862,7 @@ func postIsu(c echo.Context) error {
 	}
 
 	var isuFromJIA IsuFromJIA
-	err = json.Unmarshal(resBody, &isuFromJIA)
+	err = sonic.Unmarshal(resBody, &isuFromJIA)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
