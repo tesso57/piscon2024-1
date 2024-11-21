@@ -1360,7 +1360,7 @@ func getIsuConditionsFromDB(
 		}
 	} else {
 		q, args, err := sqlx.In(
-			"SELECT jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level`  FROM `isu_condition` WHERE `jia_isu_uuid` = ?"+
+			"SELECT `jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`, `level`  FROM `isu_condition` WHERE `jia_isu_uuid` = ?"+
 				"	AND `timestamp` < ?"+
 				"	AND ? <= `timestamp`"+
 				"	AND `level` IN (?) "+
